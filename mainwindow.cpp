@@ -6,6 +6,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -13,16 +15,23 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFrame>
+#include <QGraphicsOpacityEffect>
 #include <QHBoxLayout>
 #include <QImageReader>
 #include <QInputDevice>
+#include <QKeyEvent>
+#include <QLocale>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QNativeGestureEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QProcess>
+#include <QPropertyAnimation>
 #include <QPushButton>
+#include <QEasingCurve>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QStandardPaths>
@@ -113,6 +122,18 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_toastLabel) {
             m_toastLabel->hide();
         }
+    });
+    m_zoomStatusTimer = new QTimer(this);
+    m_zoomStatusTimer->setSingleShot(true);
+    m_zoomStatusTimer->setInterval(1000);
+    connect(m_zoomStatusTimer, &QTimer::timeout, this, [this] {
+        if (!m_zoomStatusLabel || !m_zoomStatusFadeAnimation) {
+            return;
+        }
+        m_zoomStatusFadeAnimation->stop();
+        m_zoomStatusFadeAnimation->setStartValue(1.0);
+        m_zoomStatusFadeAnimation->setEndValue(0.0);
+        m_zoomStatusFadeAnimation->start();
     });
     setAcceptDrops(true);
     setWindowTitle(tr("NGImageViewer"));
@@ -226,6 +247,20 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         return QMainWindow::eventFilter(watched, event);
     }
 
+    if (event->type() == QEvent::KeyPress) {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (handleKeyboardShortcut(keyEvent)) {
+            return true;
+        }
+        if (handleKeyboardPan(keyEvent)) {
+            return true;
+        }
+    }
+
+    if (handleMousePanEvent(watched, event)) {
+        return true;
+    }
+
     if (event->type() == QEvent::NativeGesture) {
         auto *nativeGesture = static_cast<QNativeGestureEvent *>(event);
         if (handleNativeZoomGesture(nativeGesture)) {
@@ -281,6 +316,18 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     return true;
 }
 
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    if (handleKeyboardShortcut(event)) {
+        return;
+    }
+    if (handleKeyboardPan(event)) {
+        return;
+    }
+
+    QMainWindow::keyPressEvent(event);
+}
+
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
@@ -290,10 +337,13 @@ void MainWindow::resizeEvent(QResizeEvent *event)
     repositionOverviewIndicator();
     updateOverviewIndicator();
     repositionToast();
+    repositionZoomStatus();
 }
 
 void MainWindow::setupUi()
 {
+    setFocusPolicy(Qt::StrongFocus);
+
     auto *central = new QWidget(this);
     central->setObjectName(QStringLiteral("root"));
 
@@ -376,12 +426,37 @@ void MainWindow::setupUi()
             font-size: 13px;
             padding: 9px 14px;
         }
+        QLabel#zoomStatus {
+            background: rgba(15, 23, 42, 210);
+            border-radius: 7px;
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 7px 11px;
+        }
     )"));
 
     m_toastLabel = new QLabel(central);
     m_toastLabel->setObjectName(QStringLiteral("toast"));
     m_toastLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
     m_toastLabel->hide();
+
+    m_zoomStatusLabel = new QLabel(central);
+    m_zoomStatusLabel->setObjectName(QStringLiteral("zoomStatus"));
+    m_zoomStatusLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_zoomStatusOpacity = new QGraphicsOpacityEffect(m_zoomStatusLabel);
+    m_zoomStatusOpacity->setOpacity(1.0);
+    m_zoomStatusLabel->setGraphicsEffect(m_zoomStatusOpacity);
+    m_zoomStatusFadeAnimation = new QPropertyAnimation(m_zoomStatusOpacity, "opacity", this);
+    m_zoomStatusFadeAnimation->setDuration(220);
+    m_zoomStatusFadeAnimation->setEasingCurve(QEasingCurve::OutCubic);
+    connect(m_zoomStatusFadeAnimation, &QPropertyAnimation::finished, this, [this] {
+        if (m_zoomStatusLabel && m_zoomStatusOpacity && qFuzzyIsNull(m_zoomStatusOpacity->opacity())) {
+            m_zoomStatusLabel->hide();
+            m_zoomStatusOpacity->setOpacity(1.0);
+        }
+    });
+    m_zoomStatusLabel->hide();
 }
 
 QWidget *MainWindow::createEmptyPage()
@@ -424,6 +499,8 @@ QWidget *MainWindow::createImagePage()
     m_scrollArea = new QScrollArea(page);
     m_scrollArea->setAlignment(Qt::AlignCenter);
     m_scrollArea->setWidgetResizable(false);
+    m_scrollArea->setFocusPolicy(Qt::StrongFocus);
+    m_scrollArea->viewport()->setFocusPolicy(Qt::StrongFocus);
 
     m_imageLabel = new ImageLabel(m_scrollArea);
     m_imageLabel->setObjectName(QStringLiteral("imageLabel"));
@@ -440,6 +517,8 @@ QWidget *MainWindow::createImagePage()
     m_overviewIndicator = new ImageOverview(page);
     m_overviewIndicator->hide();
     m_overviewIndicator->raise();
+    connect(m_overviewIndicator, &ImageOverview::viewportCenterChanged,
+            this, &MainWindow::moveViewportFromOverview);
     connect(m_scrollArea->horizontalScrollBar(), &QScrollBar::valueChanged,
             this, &MainWindow::updateOverviewIndicator);
     connect(m_scrollArea->verticalScrollBar(), &QScrollBar::valueChanged,
@@ -500,11 +579,24 @@ QWidget *MainWindow::createToolbar()
     connect(m_deleteButton, &QToolButton::clicked, this, &MainWindow::deleteCurrentImage);
 
     auto *menu = new QMenu(this);
+    m_infoAction = menu->addAction(tr("更多信息"));
     m_copyAction = menu->addAction(tr("复制到剪切板"));
+    m_copyPathAction = menu->addAction(tr("复制图片路径"));
+#ifdef Q_OS_MAC
+    m_revealAction = menu->addAction(tr("在 Finder 中显示"));
+#elif defined(Q_OS_WIN)
+    m_revealAction = menu->addAction(tr("在 Windows 文件资源管理器中显示"));
+#else
+    m_revealAction = menu->addAction(tr("在文件管理器中显示"));
+#endif
+    menu->addSeparator();
     auto *aboutAction = menu->addAction(tr("关于 NGImageViewer"));
     m_moreButton->setMenu(menu);
     m_moreButton->setPopupMode(QToolButton::InstantPopup);
+    connect(m_infoAction, &QAction::triggered, this, &MainWindow::showImageInfoDialog);
     connect(m_copyAction, &QAction::triggered, this, &MainWindow::copyCurrentImageToClipboard);
+    connect(m_copyPathAction, &QAction::triggered, this, &MainWindow::copyCurrentImagePathToClipboard);
+    connect(m_revealAction, &QAction::triggered, this, &MainWindow::revealCurrentImageInFileManager);
     connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
 
     updateToolbarState();
@@ -520,6 +612,7 @@ QToolButton *MainWindow::createToolButton(const QString &iconPath, const QString
     button->setAccessibleName(tooltip);
     button->setFixedSize(38, 38);
     button->setAutoRaise(true);
+    button->setFocusPolicy(Qt::NoFocus);
     return button;
 }
 
@@ -569,9 +662,11 @@ bool MainWindow::openStaticImage(const QString &filePath, bool showErrors)
     m_pendingScrollAnchor = false;
     rebuildDirectorySequence(filePath);
     m_stack->setCurrentWidget(m_imagePage);
+    m_scrollArea->setFocus(Qt::OtherFocusReason);
     updateImageView();
     QTimer::singleShot(0, this, &MainWindow::updateImageView);
     updateToolbarState();
+    updateZoomStatus();
     setWindowTitle(QFileInfo(filePath).fileName() + tr(" - NGImageViewer"));
     return true;
 }
@@ -613,9 +708,11 @@ bool MainWindow::openSvgImage(const QString &filePath, bool showErrors)
     m_pendingScrollAnchor = false;
     rebuildDirectorySequence(filePath);
     m_stack->setCurrentWidget(m_imagePage);
+    m_scrollArea->setFocus(Qt::OtherFocusReason);
     updateImageView();
     QTimer::singleShot(0, this, &MainWindow::updateImageView);
     updateToolbarState();
+    updateZoomStatus();
     setWindowTitle(QFileInfo(filePath).fileName() + tr(" - NGImageViewer"));
     return true;
 }
@@ -651,9 +748,11 @@ bool MainWindow::openGif(const QString &filePath, bool showErrors)
     m_movie->start();
     rebuildDirectorySequence(filePath);
     m_stack->setCurrentWidget(m_imagePage);
+    m_scrollArea->setFocus(Qt::OtherFocusReason);
     updateImageView();
     QTimer::singleShot(0, this, &MainWindow::updateImageView);
     updateToolbarState();
+    updateZoomStatus();
     setWindowTitle(QFileInfo(filePath).fileName() + tr(" - NGImageViewer"));
     return true;
 }
@@ -710,6 +809,18 @@ void MainWindow::showEmptyState()
     if (m_overviewIndicator) {
         m_overviewIndicator->hide();
     }
+    if (m_zoomStatusLabel) {
+        m_zoomStatusLabel->hide();
+    }
+    if (m_zoomStatusFadeAnimation) {
+        m_zoomStatusFadeAnimation->stop();
+    }
+    if (m_zoomStatusOpacity) {
+        m_zoomStatusOpacity->setOpacity(1.0);
+    }
+    if (m_zoomStatusTimer) {
+        m_zoomStatusTimer->stop();
+    }
     updateToolbarState();
 }
 
@@ -736,6 +847,18 @@ void MainWindow::clearCurrentImage()
     }
     if (m_overviewIndicator) {
         m_overviewIndicator->hide();
+    }
+    if (m_zoomStatusLabel) {
+        m_zoomStatusLabel->hide();
+    }
+    if (m_zoomStatusFadeAnimation) {
+        m_zoomStatusFadeAnimation->stop();
+    }
+    if (m_zoomStatusOpacity) {
+        m_zoomStatusOpacity->setOpacity(1.0);
+    }
+    if (m_zoomStatusTimer) {
+        m_zoomStatusTimer->stop();
     }
     updateToolbarState();
 }
@@ -778,6 +901,15 @@ void MainWindow::updateToolbarState()
     m_moreButton->setEnabled(true);
     if (m_copyAction) {
         m_copyAction->setEnabled(imageAvailable);
+    }
+    if (m_infoAction) {
+        m_infoAction->setEnabled(imageAvailable);
+    }
+    if (m_copyPathAction) {
+        m_copyPathAction->setEnabled(imageAvailable);
+    }
+    if (m_revealAction) {
+        m_revealAction->setEnabled(imageAvailable);
     }
     if (m_fitButton) {
         m_fitButton->setToolTip(m_fitToWindow ? tr("切换到原始比例") : tr("适配窗口"));
@@ -827,6 +959,7 @@ void MainWindow::updateImageView()
         m_imageLabel->setShowTransparencyGrid(true);
         m_imageLabel->resize(display.size());
         updateOverviewIndicator();
+        updateZoomStatus(false);
         return;
     }
 
@@ -870,6 +1003,7 @@ void MainWindow::updateImageView()
     m_imageLabel->setShowTransparencyGrid(display.hasAlphaChannel());
     m_imageLabel->resize(pixmap.size());
     updateOverviewIndicator();
+    updateZoomStatus(false);
 }
 
 void MainWindow::requestImageViewUpdate()
@@ -882,6 +1016,53 @@ void MainWindow::requestImageViewUpdate()
     if (!m_renderTimer->isActive()) {
         m_renderTimer->start();
     }
+}
+
+void MainWindow::updateZoomStatus(bool restartHideTimer)
+{
+    if (!m_zoomStatusLabel || !hasImage()) {
+        return;
+    }
+
+    if (m_fitToWindow) {
+        m_zoomStatusLabel->setText(tr("Fit"));
+    } else {
+        m_zoomStatusLabel->setText(tr("%1%").arg(qRound(m_scaleFactor * 100.0)));
+    }
+
+    m_zoomStatusLabel->adjustSize();
+    repositionZoomStatus();
+    if (!restartHideTimer && !m_zoomStatusLabel->isVisible()) {
+        return;
+    }
+    if (!restartHideTimer) {
+        m_zoomStatusLabel->raise();
+        return;
+    }
+
+    if (m_zoomStatusFadeAnimation) {
+        m_zoomStatusFadeAnimation->stop();
+    }
+    if (m_zoomStatusOpacity) {
+        m_zoomStatusOpacity->setOpacity(1.0);
+    }
+    m_zoomStatusLabel->show();
+    m_zoomStatusLabel->raise();
+    if (restartHideTimer && m_zoomStatusTimer) {
+        m_zoomStatusTimer->start();
+    }
+}
+
+void MainWindow::repositionZoomStatus()
+{
+    if (!m_zoomStatusLabel || !centralWidget()) {
+        return;
+    }
+
+    const int margin = 14;
+    const int contentBottom = m_stack ? m_stack->height() : centralWidget()->height();
+    const int y = std::max(margin, contentBottom - m_zoomStatusLabel->height() - margin);
+    m_zoomStatusLabel->move(margin, y);
 }
 
 void MainWindow::invalidateOverviewPreview()
@@ -949,6 +1130,25 @@ void MainWindow::repositionOverviewIndicator()
     m_overviewIndicator->move(
         std::max(margin, m_imagePage->width() - m_overviewIndicator->width() - margin),
         margin);
+}
+
+void MainWindow::moveViewportFromOverview(const QPointF &normalizedCenter)
+{
+    if (!m_scrollArea || !m_imageLabel || !isZoomedBeyondFit()) {
+        return;
+    }
+
+    const QSize labelSize = m_imageLabel->size();
+    const QSize viewportSize = m_scrollArea->viewport()->size();
+    if (labelSize.isEmpty() || viewportSize.isEmpty()) {
+        return;
+    }
+
+    m_pendingScrollAnchor = false;
+    auto *horizontal = m_scrollArea->horizontalScrollBar();
+    auto *vertical = m_scrollArea->verticalScrollBar();
+    horizontal->setValue(qRound(normalizedCenter.x() * labelSize.width() - viewportSize.width() / 2.0));
+    vertical->setValue(qRound(normalizedCenter.y() * labelSize.height() - viewportSize.height() / 2.0));
 }
 
 QPixmap MainWindow::createOverviewPixmap(const QSize &targetSize)
@@ -1075,6 +1275,182 @@ double MainWindow::maximumManualScale() const
     return std::max(fitScale, std::min(requestedLimit, budgetLimit));
 }
 
+bool MainWindow::isZoomedBeyondFit() const
+{
+    const double fitScale = currentFitScale();
+    return hasImage()
+           && !m_fitToWindow
+           && !qFuzzyIsNull(fitScale)
+           && m_scaleFactor / fitScale > 1.0;
+}
+
+bool MainWindow::handleKeyboardShortcut(QKeyEvent *event)
+{
+    const Qt::KeyboardModifiers modifiers = event->modifiers();
+    const bool commandModifier = modifiers.testFlag(Qt::ControlModifier)
+                                 || modifiers.testFlag(Qt::MetaModifier);
+
+    if (commandModifier && event->key() == Qt::Key_O) {
+        chooseImage();
+        event->accept();
+        return true;
+    }
+
+    if (!hasImage()) {
+        return false;
+    }
+
+    switch (event->key()) {
+    case Qt::Key_Plus:
+    case Qt::Key_Equal:
+        zoomBy(1.25);
+        event->accept();
+        return true;
+    case Qt::Key_Minus:
+        zoomBy(0.8);
+        event->accept();
+        return true;
+    case Qt::Key_Delete:
+        deleteCurrentImage();
+        event->accept();
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool MainWindow::handleKeyboardPan(QKeyEvent *event)
+{
+    if (!hasImage()) {
+        return false;
+    }
+
+    if (event->key() == Qt::Key_Escape && isZoomedBeyondFit()) {
+        m_fitToWindow = true;
+        m_scaleFactor = 1.0;
+        m_pendingScrollAnchor = false;
+        updateImageView();
+        updateToolbarState();
+        updateZoomStatus();
+        event->accept();
+        return true;
+    }
+
+    if (!isZoomedBeyondFit()) {
+        if (event->key() == Qt::Key_Left && m_currentIndex > 0) {
+            openPreviousImage();
+            event->accept();
+            return true;
+        }
+        if (event->key() == Qt::Key_Right
+            && m_currentIndex >= 0
+            && m_currentIndex + 1 < m_directoryImages.size()) {
+            openNextImage();
+            event->accept();
+            return true;
+        }
+        return false;
+    }
+
+    int dx = 0;
+    int dy = 0;
+    switch (event->key()) {
+    case Qt::Key_Left:
+        dx = -1;
+        break;
+    case Qt::Key_Right:
+        dx = 1;
+        break;
+    case Qt::Key_Up:
+        dy = -1;
+        break;
+    case Qt::Key_Down:
+        dy = 1;
+        break;
+    default:
+        return false;
+    }
+
+    auto *horizontal = m_scrollArea->horizontalScrollBar();
+    auto *vertical = m_scrollArea->verticalScrollBar();
+    if ((dx != 0 && horizontal->maximum() == 0)
+        || (dy != 0 && vertical->maximum() == 0)) {
+        return false;
+    }
+
+    const int baseStep = std::max(48, m_scrollArea->viewport()->width() / 12);
+    const int step = event->modifiers().testFlag(Qt::ShiftModifier) ? baseStep * 3 : baseStep;
+    if (dx != 0) {
+        horizontal->setValue(horizontal->value() + dx * step);
+    }
+    if (dy != 0) {
+        vertical->setValue(vertical->value() + dy * step);
+    }
+
+    event->accept();
+    return true;
+}
+
+bool MainWindow::handleMousePanEvent(QObject *watched, QEvent *event)
+{
+    if (!isZoomedBeyondFit() || !m_scrollArea || !m_imageLabel) {
+        return false;
+    }
+
+    auto *horizontal = m_scrollArea->horizontalScrollBar();
+    auto *vertical = m_scrollArea->verticalScrollBar();
+    if (horizontal->maximum() == 0 && vertical->maximum() == 0) {
+        return false;
+    }
+
+    auto viewportPosition = [this, watched](const QPoint &position) {
+        if (auto *widget = qobject_cast<QWidget *>(watched)) {
+            return widget->mapTo(m_scrollArea->viewport(), position);
+        }
+        return position;
+    };
+
+    if (event->type() == QEvent::MouseButtonPress) {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() != Qt::LeftButton) {
+            return false;
+        }
+
+        m_mousePanning = true;
+        m_lastPanPosition = viewportPosition(mouseEvent->position().toPoint());
+        m_scrollArea->viewport()->setCursor(Qt::ClosedHandCursor);
+        mouseEvent->accept();
+        return true;
+    }
+
+    if (event->type() == QEvent::MouseMove && m_mousePanning) {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        const QPoint currentPosition = viewportPosition(mouseEvent->position().toPoint());
+        const QPoint delta = currentPosition - m_lastPanPosition;
+        horizontal->setValue(horizontal->value() - delta.x());
+        vertical->setValue(vertical->value() - delta.y());
+        m_lastPanPosition = currentPosition;
+        mouseEvent->accept();
+        return true;
+    }
+
+    if ((event->type() == QEvent::MouseButtonRelease || event->type() == QEvent::Leave)
+        && m_mousePanning) {
+        if (event->type() == QEvent::MouseButtonRelease) {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (mouseEvent->button() != Qt::LeftButton) {
+                return false;
+            }
+            mouseEvent->accept();
+        }
+        m_mousePanning = false;
+        m_scrollArea->viewport()->unsetCursor();
+        return true;
+    }
+
+    return false;
+}
+
 void MainWindow::zoomBy(double factor)
 {
     if (!hasImage()) {
@@ -1106,6 +1482,7 @@ void MainWindow::zoomAt(double factor, const QPoint &viewportPosition)
         m_qualityRenderTimer->start();
     }
     updateToolbarState();
+    updateZoomStatus();
 }
 
 bool MainWindow::handleNativeZoomGesture(QNativeGestureEvent *event)
@@ -1132,6 +1509,7 @@ void MainWindow::toggleFitMode()
     }
     updateImageView();
     updateToolbarState();
+    updateZoomStatus();
 }
 
 void MainWindow::showActualSize()
@@ -1144,6 +1522,7 @@ void MainWindow::showActualSize()
     m_pendingScrollAnchor = false;
     updateImageView();
     updateToolbarState();
+    updateZoomStatus();
 }
 
 void MainWindow::rotateBy(int degrees)
@@ -1287,6 +1666,65 @@ void MainWindow::copyCurrentImageToClipboard()
         QApplication::clipboard()->setImage(image);
         showToast(tr("已复制到剪切板"));
     }
+}
+
+void MainWindow::copyCurrentImagePathToClipboard()
+{
+    if (m_currentFilePath.isEmpty()) {
+        return;
+    }
+
+    QApplication::clipboard()->setText(QDir::toNativeSeparators(m_currentFilePath));
+    showToast(tr("已复制图片路径"));
+}
+
+void MainWindow::revealCurrentImageInFileManager()
+{
+    if (m_currentFilePath.isEmpty()) {
+        return;
+    }
+
+#ifdef Q_OS_MAC
+    QProcess::startDetached(QStringLiteral("open"), {QStringLiteral("-R"), m_currentFilePath});
+#elif defined(Q_OS_WIN)
+    QProcess::startDetached(QStringLiteral("explorer.exe"),
+                            {QStringLiteral("/select,%1").arg(QDir::toNativeSeparators(m_currentFilePath))});
+#else
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(m_currentFilePath).absolutePath()));
+#endif
+}
+
+void MainWindow::showImageInfoDialog()
+{
+    if (!hasImage()) {
+        return;
+    }
+
+    const QFileInfo info(m_currentFilePath);
+    const QSize imageSize = transformedImageSize();
+    const QString sizeText = imageSize.isEmpty()
+                                 ? tr("未知")
+                                 : tr("%1 x %2").arg(imageSize.width()).arg(imageSize.height());
+    const QString zoomText = m_fitToWindow
+                                 ? tr("Fit")
+                                 : tr("%1%").arg(qRound(m_scaleFactor * 100.0));
+    const QString fileSize = QLocale().formattedDataSize(info.size());
+    const QString modified = QLocale().toString(info.lastModified(), QLocale::ShortFormat);
+
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Information);
+    box.setWindowTitle(tr("更多信息"));
+    box.setTextFormat(Qt::RichText);
+    box.setText(tr("<b>%1</b>").arg(info.fileName().toHtmlEscaped()));
+    box.setInformativeText(
+        tr("格式：%1<br/>尺寸：%2<br/>文件大小：%3<br/>修改时间：%4<br/>当前缩放：%5<br/>路径：%6")
+            .arg(info.suffix().toUpper().toHtmlEscaped(),
+                 sizeText.toHtmlEscaped(),
+                 fileSize.toHtmlEscaped(),
+                 modified.toHtmlEscaped(),
+                 zoomText.toHtmlEscaped(),
+                 QDir::toNativeSeparators(m_currentFilePath).toHtmlEscaped()));
+    box.exec();
 }
 
 void MainWindow::showToast(const QString &message)

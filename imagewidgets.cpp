@@ -1,5 +1,6 @@
 #include "imagewidgets.h"
 
+#include <QMouseEvent>
 #include <QPainter>
 
 #include <algorithm>
@@ -40,8 +41,8 @@ void ImageLabel::paintEvent(QPaintEvent *event)
 ImageOverview::ImageOverview(QWidget *parent)
     : QWidget(parent)
 {
-    setAttribute(Qt::WA_TransparentForMouseEvents);
     setFixedSize(168, 126);
+    setMouseTracking(true);
 }
 
 void ImageOverview::setPreview(const QPixmap &preview)
@@ -81,31 +82,73 @@ void ImageOverview::paintEvent(QPaintEvent *event)
     painter.setBrush(Qt::NoBrush);
     painter.drawRect(imageRect.adjusted(-0.5, -0.5, 0.5, 0.5));
 
-    QRectF viewport(
-        imageRect.left() + m_normalizedViewportRect.left() * imageRect.width(),
-        imageRect.top() + m_normalizedViewportRect.top() * imageRect.height(),
-        m_normalizedViewportRect.width() * imageRect.width(),
-        m_normalizedViewportRect.height() * imageRect.height());
-    viewport = viewport.intersected(imageRect);
+    QRectF viewport = viewportIndicatorRect();
     if (viewport.isEmpty()) {
         return;
-    }
-    if (viewport.width() < 4.0) {
-        viewport.setWidth(4.0);
-    }
-    if (viewport.height() < 4.0) {
-        viewport.setHeight(4.0);
-    }
-    if (viewport.right() > imageRect.right()) {
-        viewport.moveRight(imageRect.right());
-    }
-    if (viewport.bottom() > imageRect.bottom()) {
-        viewport.moveBottom(imageRect.bottom());
     }
 
     painter.setPen(QPen(QColor("#ffffff"), 2));
     painter.setBrush(QColor(255, 255, 255, 30));
     painter.drawRect(viewport.adjusted(1, 1, -1, -1));
+}
+
+void ImageOverview::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() != Qt::LeftButton || m_preview.isNull()) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    const QRectF viewport = viewportIndicatorRect();
+    if (!viewport.contains(event->position())) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    m_draggingViewport = true;
+    m_dragOffset = event->position() - viewport.center();
+    setCursor(Qt::ClosedHandCursor);
+    event->accept();
+}
+
+void ImageOverview::mouseMoveEvent(QMouseEvent *event)
+{
+    if (m_draggingViewport) {
+        emit viewportCenterChanged(normalizedCenterFromPosition(event->position() - m_dragOffset));
+        event->accept();
+        return;
+    }
+
+    if (viewportIndicatorRect().contains(event->position())) {
+        setCursor(Qt::OpenHandCursor);
+    } else {
+        unsetCursor();
+    }
+    QWidget::mouseMoveEvent(event);
+}
+
+void ImageOverview::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (event->button() != Qt::LeftButton || !m_draggingViewport) {
+        QWidget::mouseReleaseEvent(event);
+        return;
+    }
+
+    m_draggingViewport = false;
+    if (viewportIndicatorRect().contains(event->position())) {
+        setCursor(Qt::OpenHandCursor);
+    } else {
+        unsetCursor();
+    }
+    event->accept();
+}
+
+void ImageOverview::leaveEvent(QEvent *event)
+{
+    if (!m_draggingViewport) {
+        unsetCursor();
+    }
+    QWidget::leaveEvent(event);
 }
 
 QRectF ImageOverview::overviewImageRect() const
@@ -121,6 +164,51 @@ QRectF ImageOverview::overviewImageRect() const
         QPointF(content.center().x() - size.width() / 2.0,
                 content.center().y() - size.height() / 2.0),
         size);
+}
+
+QRectF ImageOverview::viewportIndicatorRect() const
+{
+    const QRectF imageRect = overviewImageRect();
+    if (imageRect.isEmpty()) {
+        return {};
+    }
+
+    QRectF viewport(
+        imageRect.left() + m_normalizedViewportRect.left() * imageRect.width(),
+        imageRect.top() + m_normalizedViewportRect.top() * imageRect.height(),
+        m_normalizedViewportRect.width() * imageRect.width(),
+        m_normalizedViewportRect.height() * imageRect.height());
+    viewport = viewport.intersected(imageRect);
+    if (viewport.isEmpty()) {
+        return {};
+    }
+    if (viewport.width() < 4.0) {
+        viewport.setWidth(4.0);
+    }
+    if (viewport.height() < 4.0) {
+        viewport.setHeight(4.0);
+    }
+    if (viewport.right() > imageRect.right()) {
+        viewport.moveRight(imageRect.right());
+    }
+    if (viewport.bottom() > imageRect.bottom()) {
+        viewport.moveBottom(imageRect.bottom());
+    }
+    return viewport;
+}
+
+QPointF ImageOverview::normalizedCenterFromPosition(const QPointF &position) const
+{
+    const QRectF imageRect = overviewImageRect();
+    if (imageRect.isEmpty()) {
+        return {};
+    }
+
+    const double x = std::clamp(position.x(), imageRect.left(), imageRect.right());
+    const double y = std::clamp(position.y(), imageRect.top(), imageRect.bottom());
+    return QPointF(
+        (x - imageRect.left()) / imageRect.width(),
+        (y - imageRect.top()) / imageRect.height());
 }
 
 void ImageOverview::paintCheckerboard(QPainter *painter, const QRectF &area)

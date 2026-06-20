@@ -6,6 +6,7 @@
 #include <QMainWindow>
 #include <QMovie>
 #include <QPoint>
+#include <QPointF>
 #include <QScrollArea>
 #include <QStackedWidget>
 #include <QToolButton>
@@ -15,8 +16,12 @@ class QDragEnterEvent;
 class QDragLeaveEvent;
 class QDropEvent;
 class QEvent;
+class QGraphicsOpacityEffect;
+class QKeyEvent;
+class QMouseEvent;
 class QNativeGestureEvent;
 class QObject;
+class QPropertyAnimation;
 class QSvgRenderer;
 class QTimer;
 class ImageLabel;
@@ -38,6 +43,7 @@ protected:
     void dropEvent(QDropEvent *event) override;
     bool event(QEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
 private:
@@ -65,13 +71,20 @@ private:
     void updateToolbarState();
     void updateImageView();
     void requestImageViewUpdate();
+    void updateZoomStatus(bool restartHideTimer = true);
+    void repositionZoomStatus();
     void invalidateOverviewPreview();
     void updateOverviewIndicator();
     void repositionOverviewIndicator();
+    void moveViewportFromOverview(const QPointF &normalizedCenter);
     QPixmap createOverviewPixmap(const QSize &targetSize);
     QSize transformedImageSize() const;
     double currentFitScale() const;
     double maximumManualScale() const;
+    bool isZoomedBeyondFit() const;
+    bool handleKeyboardShortcut(QKeyEvent *event);
+    bool handleKeyboardPan(QKeyEvent *event);
+    bool handleMousePanEvent(QObject *watched, QEvent *event);
     void zoomBy(double factor);
     void zoomAt(double factor, const QPoint &viewportPosition);
     bool handleNativeZoomGesture(QNativeGestureEvent *event);
@@ -88,6 +101,9 @@ private:
     void openNeighborAfterDelete();
 
     void copyCurrentImageToClipboard();
+    void copyCurrentImagePathToClipboard();
+    void revealCurrentImageInFileManager();
+    void showImageInfoDialog();
     void showToast(const QString &message);
     void repositionToast();
     void showAboutDialog();
@@ -98,11 +114,15 @@ private:
     QLabel *m_emptyIllustration = nullptr;
     ImageLabel *m_imageLabel = nullptr;
     QLabel *m_toastLabel = nullptr;
+    QLabel *m_zoomStatusLabel = nullptr;
+    QGraphicsOpacityEffect *m_zoomStatusOpacity = nullptr;
     ImageOverview *m_overviewIndicator = nullptr;
     QScrollArea *m_scrollArea = nullptr;
     QTimer *m_renderTimer = nullptr;
     QTimer *m_qualityRenderTimer = nullptr;
     QTimer *m_toastTimer = nullptr;
+    QTimer *m_zoomStatusTimer = nullptr;
+    QPropertyAnimation *m_zoomStatusFadeAnimation = nullptr;
 
     QToolButton *m_zoomInButton = nullptr;
     QToolButton *m_zoomOutButton = nullptr;
@@ -116,6 +136,9 @@ private:
     QToolButton *m_deleteButton = nullptr;
     QToolButton *m_moreButton = nullptr;
     QAction *m_copyAction = nullptr;
+    QAction *m_infoAction = nullptr;
+    QAction *m_copyPathAction = nullptr;
+    QAction *m_revealAction = nullptr;
 
     QString m_currentFilePath;
     QImage m_originalImage;
@@ -137,5 +160,7 @@ private:
     QPixmap m_overviewPreviewCache;
     QSize m_overviewPreviewCacheSize;
     bool m_overviewPreviewDirty = true;
+    bool m_mousePanning = false;
+    QPoint m_lastPanPosition;
 };
 #endif // MAINWINDOW_H
