@@ -44,6 +44,8 @@ const QSet<QString> kRequiredFormats = {
     QStringLiteral("gif"),
     QStringLiteral("webp"),
     QStringLiteral("svg"),
+    QStringLiteral("heic"),
+    QStringLiteral("heif"),
 };
 
 const QStringList kImageNameFilters = {
@@ -54,6 +56,8 @@ const QStringList kImageNameFilters = {
     QStringLiteral("*.gif"),
     QStringLiteral("*.webp"),
     QStringLiteral("*.svg"),
+    QStringLiteral("*.heic"),
+    QStringLiteral("*.heif"),
 };
 
 QPixmap createEmptyIllustration(const QSize &size)
@@ -719,7 +723,11 @@ QStringList MainWindow::missingRequiredImageFormats() const
     }
 
     QStringList missing;
-    for (const QString &format : {QStringLiteral("gif"), QStringLiteral("webp"), QStringLiteral("svg")}) {
+    for (const QString &format : {QStringLiteral("gif"),
+                                  QStringLiteral("webp"),
+                                  QStringLiteral("svg"),
+                                  QStringLiteral("heic"),
+                                  QStringLiteral("heif")}) {
         if (!available.contains(format)) {
             missing << format;
         }
@@ -854,7 +862,7 @@ void MainWindow::chooseImage()
 #endif
     }
 
-    const QString filter = tr("Images (*.jpg *.jpeg *.png *.bmp *.gif *.webp *.svg)");
+    const QString filter = tr("Images (*.jpg *.jpeg *.png *.bmp *.gif *.webp *.svg *.heic *.heif)");
     const QString path = QFileDialog::getOpenFileName(this, tr("打开图片"), startDir, filter);
     if (path.isEmpty()) {
         return;
@@ -1506,5 +1514,5 @@ void MainWindow::showAboutDialog()
     QMessageBox::about(
         this,
         tr("关于 NGImageViewer"),
-        tr("<b>NGImageViewer</b><br/>跨端图片查看器<br/>支持 JPG、PNG、BMP、GIF、WEBP、SVG。"));
+        tr("<b>NGImageViewer</b><br/>跨端图片查看器<br/>支持 JPG、PNG、BMP、GIF、WEBP、SVG、HEIC、HEIF。"));
 }
