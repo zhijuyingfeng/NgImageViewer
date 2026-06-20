@@ -9,6 +9,10 @@ set(CMAKE_AUTORCC ON)
 qt_add_executable(NgImageViewer
     WIN32 MACOSX_BUNDLE
     main.cpp
+    imageformats.cpp
+    imageformats.h
+    imagewidgets.cpp
+    imagewidgets.h
     mainwindow.cpp
     mainwindow.h
     resources.qrc

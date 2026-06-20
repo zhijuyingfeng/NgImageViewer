@@ -19,6 +19,8 @@ class QNativeGestureEvent;
 class QObject;
 class QSvgRenderer;
 class QTimer;
+class ImageLabel;
+class ImageOverview;
 
 class MainWindow : public QMainWindow
 {
@@ -94,9 +96,9 @@ private:
     QWidget *m_emptyPage = nullptr;
     QWidget *m_imagePage = nullptr;
     QLabel *m_emptyIllustration = nullptr;
-    QLabel *m_imageLabel = nullptr;
+    ImageLabel *m_imageLabel = nullptr;
     QLabel *m_toastLabel = nullptr;
-    QWidget *m_overviewIndicator = nullptr;
+    ImageOverview *m_overviewIndicator = nullptr;
     QScrollArea *m_scrollArea = nullptr;
     QTimer *m_renderTimer = nullptr;
     QTimer *m_qualityRenderTimer = nullptr;

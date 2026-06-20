@@ -1,5 +1,8 @@
 #include "mainwindow.h"
 
+#include "imageformats.h"
+#include "imagewidgets.h"
+
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
@@ -22,7 +25,6 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollBar>
-#include <QSet>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QSvgRenderer>
@@ -35,30 +37,6 @@
 #include <cmath>
 
 namespace {
-
-const QSet<QString> kRequiredFormats = {
-    QStringLiteral("jpg"),
-    QStringLiteral("jpeg"),
-    QStringLiteral("png"),
-    QStringLiteral("bmp"),
-    QStringLiteral("gif"),
-    QStringLiteral("webp"),
-    QStringLiteral("svg"),
-    QStringLiteral("heic"),
-    QStringLiteral("heif"),
-};
-
-const QStringList kImageNameFilters = {
-    QStringLiteral("*.jpg"),
-    QStringLiteral("*.jpeg"),
-    QStringLiteral("*.png"),
-    QStringLiteral("*.bmp"),
-    QStringLiteral("*.gif"),
-    QStringLiteral("*.webp"),
-    QStringLiteral("*.svg"),
-    QStringLiteral("*.heic"),
-    QStringLiteral("*.heif"),
-};
 
 QPixmap createEmptyIllustration(const QSize &size)
 {
@@ -103,158 +81,6 @@ QFrame *createSeparator(QWidget *parent)
     line->setObjectName(QStringLiteral("toolbarSeparator"));
     return line;
 }
-
-class ImageLabel : public QLabel
-{
-public:
-    using QLabel::QLabel;
-
-    void setShowTransparencyGrid(bool show)
-    {
-        if (m_showTransparencyGrid == show) {
-            return;
-        }
-        m_showTransparencyGrid = show;
-        update();
-    }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        const QPixmap currentPixmap = pixmap();
-        if (m_showTransparencyGrid && !currentPixmap.isNull()) {
-            QPainter painter(this);
-            const int cell = 12;
-            for (int y = 0; y < height(); y += cell) {
-                for (int x = 0; x < width(); x += cell) {
-                    const bool alternate = ((x / cell) + (y / cell)) % 2 == 0;
-                    painter.fillRect(QRect(x, y, cell, cell),
-                                     alternate ? QColor("#f8fafc") : QColor("#dbe3ec"));
-                }
-            }
-        }
-
-        QLabel::paintEvent(event);
-    }
-
-private:
-    bool m_showTransparencyGrid = false;
-};
-
-class ImageOverview : public QWidget
-{
-public:
-    explicit ImageOverview(QWidget *parent = nullptr)
-        : QWidget(parent)
-    {
-        setAttribute(Qt::WA_TransparentForMouseEvents);
-        setFixedSize(168, 126);
-    }
-
-    void setPreview(const QPixmap &preview)
-    {
-        m_preview = preview;
-        update();
-    }
-
-    void setViewportRect(const QRectF &normalizedRect)
-    {
-        m_normalizedViewportRect = normalizedRect;
-        update();
-    }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setRenderHint(QPainter::SmoothPixmapTransform);
-
-        const QRectF outer = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
-        painter.setPen(QPen(QColor(15, 23, 42, 120), 1));
-        painter.setBrush(QColor(15, 23, 42, 115));
-        painter.drawRoundedRect(outer, 7, 7);
-
-        if (m_preview.isNull()) {
-            return;
-        }
-
-        const QRectF imageRect = overviewImageRect();
-        paintCheckerboard(&painter, imageRect);
-        painter.drawPixmap(imageRect.toRect(), m_preview);
-
-        painter.setPen(QPen(QColor(255, 255, 255, 170), 1));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRect(imageRect.adjusted(-0.5, -0.5, 0.5, 0.5));
-
-        QRectF viewport(
-            imageRect.left() + m_normalizedViewportRect.left() * imageRect.width(),
-            imageRect.top() + m_normalizedViewportRect.top() * imageRect.height(),
-            m_normalizedViewportRect.width() * imageRect.width(),
-            m_normalizedViewportRect.height() * imageRect.height());
-        viewport = viewport.intersected(imageRect);
-        if (viewport.isEmpty()) {
-            return;
-        }
-        if (viewport.width() < 4.0) {
-            viewport.setWidth(4.0);
-        }
-        if (viewport.height() < 4.0) {
-            viewport.setHeight(4.0);
-        }
-        if (viewport.right() > imageRect.right()) {
-            viewport.moveRight(imageRect.right());
-        }
-        if (viewport.bottom() > imageRect.bottom()) {
-            viewport.moveBottom(imageRect.bottom());
-        }
-
-        painter.setPen(QPen(QColor("#ffffff"), 2));
-        painter.setBrush(QColor(255, 255, 255, 30));
-        painter.drawRect(viewport.adjusted(1, 1, -1, -1));
-    }
-
-private:
-    QRectF overviewImageRect() const
-    {
-        if (m_preview.isNull()) {
-            return {};
-        }
-
-        const QRectF content = QRectF(rect()).adjusted(8, 8, -8, -8);
-        QSizeF size = m_preview.size();
-        size.scale(content.size(), Qt::KeepAspectRatio);
-        return QRectF(
-            QPointF(content.center().x() - size.width() / 2.0,
-                    content.center().y() - size.height() / 2.0),
-            size);
-    }
-
-    void paintCheckerboard(QPainter *painter, const QRectF &area)
-    {
-        painter->save();
-        painter->setClipRect(area);
-        painter->setPen(Qt::NoPen);
-
-        const int cell = 8;
-        const int startX = static_cast<int>(std::floor(area.left()));
-        const int startY = static_cast<int>(std::floor(area.top()));
-        for (int y = startY; y < area.bottom(); y += cell) {
-            for (int x = startX; x < area.right(); x += cell) {
-                const bool alternate = ((x / cell) + (y / cell)) % 2 == 0;
-                painter->fillRect(QRect(x, y, cell, cell),
-                                  alternate ? QColor("#f8fafc") : QColor("#cbd5e1"));
-            }
-        }
-
-        painter->restore();
-    }
-
-    QPixmap m_preview;
-    QRectF m_normalizedViewportRect;
-};
 
 } // namespace
 
@@ -710,29 +536,12 @@ bool MainWindow::hasImage() const
 
 bool MainWindow::isSupportedFile(const QString &filePath) const
 {
-    const QString suffix = QFileInfo(filePath).suffix().toLower();
-    return kRequiredFormats.contains(suffix);
+    return ImageFormats::isSupportedFile(filePath);
 }
 
 QStringList MainWindow::missingRequiredImageFormats() const
 {
-    QSet<QString> available;
-    const QList<QByteArray> supportedFormats = QImageReader::supportedImageFormats();
-    for (const QByteArray &format : supportedFormats) {
-        available.insert(QString::fromLatin1(format).toLower());
-    }
-
-    QStringList missing;
-    for (const QString &format : {QStringLiteral("gif"),
-                                  QStringLiteral("webp"),
-                                  QStringLiteral("svg"),
-                                  QStringLiteral("heic"),
-                                  QStringLiteral("heif")}) {
-        if (!available.contains(format)) {
-            missing << format;
-        }
-    }
-    return missing;
+    return ImageFormats::missingRequiredRuntimeFormats();
 }
 
 bool MainWindow::openStaticImage(const QString &filePath, bool showErrors)
@@ -862,7 +671,7 @@ void MainWindow::chooseImage()
 #endif
     }
 
-    const QString filter = tr("Images (*.jpg *.jpeg *.png *.bmp *.gif *.webp *.svg *.heic *.heif)");
+    const QString filter = ImageFormats::openDialogFilter();
     const QString path = QFileDialog::getOpenFileName(this, tr("打开图片"), startDir, filter);
     if (path.isEmpty()) {
         return;
@@ -922,7 +731,7 @@ void MainWindow::clearCurrentImage()
     m_svgDefaultSize = QSize();
     if (m_imageLabel) {
         m_imageLabel->clear();
-        static_cast<ImageLabel *>(m_imageLabel)->setShowTransparencyGrid(false);
+        m_imageLabel->setShowTransparencyGrid(false);
         m_imageLabel->resize(0, 0);
     }
     if (m_overviewIndicator) {
@@ -1015,7 +824,7 @@ void MainWindow::updateImageView()
         }
 
         m_imageLabel->setPixmap(QPixmap::fromImage(display));
-        static_cast<ImageLabel *>(m_imageLabel)->setShowTransparencyGrid(true);
+        m_imageLabel->setShowTransparencyGrid(true);
         m_imageLabel->resize(display.size());
         updateOverviewIndicator();
         return;
@@ -1058,7 +867,7 @@ void MainWindow::updateImageView()
         Qt::KeepAspectRatio,
         transformationMode);
     m_imageLabel->setPixmap(pixmap);
-    static_cast<ImageLabel *>(m_imageLabel)->setShowTransparencyGrid(display.hasAlphaChannel());
+    m_imageLabel->setShowTransparencyGrid(display.hasAlphaChannel());
     m_imageLabel->resize(pixmap.size());
     updateOverviewIndicator();
 }
@@ -1118,9 +927,8 @@ void MainWindow::updateOverviewIndicator()
         return;
     }
 
-    auto *overview = static_cast<ImageOverview *>(m_overviewIndicator);
-    overview->setPreview(preview);
-    overview->setViewportRect(QRectF(
+    m_overviewIndicator->setPreview(preview);
+    m_overviewIndicator->setViewportRect(QRectF(
         visibleRect.left() / labelSize.width(),
         visibleRect.top() / labelSize.height(),
         visibleRect.width() / labelSize.width(),
@@ -1357,7 +1165,7 @@ void MainWindow::rebuildDirectorySequence(const QString &filePath)
     const QFileInfo current(filePath);
     QDir dir(current.absolutePath());
     const QFileInfoList files = dir.entryInfoList(
-        kImageNameFilters,
+        ImageFormats::imageNameFilters(),
         QDir::Files | QDir::Readable,
         QDir::Name | QDir::IgnoreCase);
 
