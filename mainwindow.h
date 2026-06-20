@@ -18,6 +18,7 @@ class QEvent;
 class QNativeGestureEvent;
 class QObject;
 class QSvgRenderer;
+class QTimer;
 
 class MainWindow : public QMainWindow
 {
@@ -61,6 +62,11 @@ private:
 
     void updateToolbarState();
     void updateImageView();
+    void requestImageViewUpdate();
+    void invalidateOverviewPreview();
+    void updateOverviewIndicator();
+    void repositionOverviewIndicator();
+    QPixmap createOverviewPixmap(const QSize &targetSize);
     QSize transformedImageSize() const;
     double currentFitScale() const;
     double maximumManualScale() const;
@@ -80,6 +86,8 @@ private:
     void openNeighborAfterDelete();
 
     void copyCurrentImageToClipboard();
+    void showToast(const QString &message);
+    void repositionToast();
     void showAboutDialog();
 
     QStackedWidget *m_stack = nullptr;
@@ -87,7 +95,12 @@ private:
     QWidget *m_imagePage = nullptr;
     QLabel *m_emptyIllustration = nullptr;
     QLabel *m_imageLabel = nullptr;
+    QLabel *m_toastLabel = nullptr;
+    QWidget *m_overviewIndicator = nullptr;
     QScrollArea *m_scrollArea = nullptr;
+    QTimer *m_renderTimer = nullptr;
+    QTimer *m_qualityRenderTimer = nullptr;
+    QTimer *m_toastTimer = nullptr;
 
     QToolButton *m_zoomInButton = nullptr;
     QToolButton *m_zoomOutButton = nullptr;
@@ -115,5 +128,12 @@ private:
     int m_rotation = 0;
     QStringList m_directoryImages;
     int m_currentIndex = -1;
+
+    bool m_pendingScrollAnchor = false;
+    QPointF m_pendingAnchorImage;
+    QPoint m_pendingAnchorViewport;
+    QPixmap m_overviewPreviewCache;
+    QSize m_overviewPreviewCacheSize;
+    bool m_overviewPreviewDirty = true;
 };
 #endif // MAINWINDOW_H

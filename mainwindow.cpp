@@ -12,6 +12,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QImageReader>
+#include <QInputDevice>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
@@ -23,7 +24,6 @@
 #include <QScrollBar>
 #include <QSet>
 #include <QStandardPaths>
-#include <QStatusBar>
 #include <QStyle>
 #include <QSvgRenderer>
 #include <QTimer>
@@ -64,26 +64,26 @@ QPixmap createEmptyIllustration(const QSize &size)
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    const QRectF canvas(10, 12, size.width() - 20, size.height() - 24);
+    const QRectF canvas(14, 10, size.width() - 28, size.height() - 20);
     painter.setPen(QPen(QColor("#cbd5e1"), 2));
     painter.setBrush(QColor("#f8fafc"));
     painter.drawRoundedRect(canvas, 14, 14);
 
-    const QRectF imageFrame(38, 36, size.width() - 76, size.height() - 68);
+    const QRectF imageFrame(42, 34, size.width() - 84, size.height() - 62);
     painter.setPen(QPen(QColor("#94a3b8"), 2));
     painter.setBrush(QColor("#ffffff"));
     painter.drawRoundedRect(imageFrame, 8, 8);
 
     painter.setBrush(QColor("#facc15"));
     painter.setPen(Qt::NoPen);
-    painter.drawEllipse(QPointF(imageFrame.left() + 30, imageFrame.top() + 24), 9, 9);
+    painter.drawEllipse(QPointF(imageFrame.left() + 30, imageFrame.top() + 28), 10, 10);
 
     QPainterPath mountains;
-    mountains.moveTo(imageFrame.left() + 18, imageFrame.bottom() - 16);
-    mountains.lineTo(imageFrame.left() + 58, imageFrame.top() + 44);
-    mountains.lineTo(imageFrame.left() + 88, imageFrame.bottom() - 22);
-    mountains.lineTo(imageFrame.left() + 112, imageFrame.top() + 54);
-    mountains.lineTo(imageFrame.right() - 14, imageFrame.bottom() - 16);
+    mountains.moveTo(imageFrame.left() + 18, imageFrame.bottom() - 18);
+    mountains.lineTo(imageFrame.left() + 62, imageFrame.top() + 54);
+    mountains.lineTo(imageFrame.left() + 94, imageFrame.bottom() - 25);
+    mountains.lineTo(imageFrame.left() + 122, imageFrame.top() + 66);
+    mountains.lineTo(imageFrame.right() - 14, imageFrame.bottom() - 18);
     mountains.closeSubpath();
     painter.setBrush(QColor("#38bdf8"));
     painter.drawPath(mountains);
@@ -137,12 +137,153 @@ private:
     bool m_showTransparencyGrid = false;
 };
 
+class ImageOverview : public QWidget
+{
+public:
+    explicit ImageOverview(QWidget *parent = nullptr)
+        : QWidget(parent)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setFixedSize(168, 126);
+    }
+
+    void setPreview(const QPixmap &preview)
+    {
+        m_preview = preview;
+        update();
+    }
+
+    void setViewportRect(const QRectF &normalizedRect)
+    {
+        m_normalizedViewportRect = normalizedRect;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+
+        const QRectF outer = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        painter.setPen(QPen(QColor(15, 23, 42, 120), 1));
+        painter.setBrush(QColor(15, 23, 42, 115));
+        painter.drawRoundedRect(outer, 7, 7);
+
+        if (m_preview.isNull()) {
+            return;
+        }
+
+        const QRectF imageRect = overviewImageRect();
+        paintCheckerboard(&painter, imageRect);
+        painter.drawPixmap(imageRect.toRect(), m_preview);
+
+        painter.setPen(QPen(QColor(255, 255, 255, 170), 1));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(imageRect.adjusted(-0.5, -0.5, 0.5, 0.5));
+
+        QRectF viewport(
+            imageRect.left() + m_normalizedViewportRect.left() * imageRect.width(),
+            imageRect.top() + m_normalizedViewportRect.top() * imageRect.height(),
+            m_normalizedViewportRect.width() * imageRect.width(),
+            m_normalizedViewportRect.height() * imageRect.height());
+        viewport = viewport.intersected(imageRect);
+        if (viewport.isEmpty()) {
+            return;
+        }
+        if (viewport.width() < 4.0) {
+            viewport.setWidth(4.0);
+        }
+        if (viewport.height() < 4.0) {
+            viewport.setHeight(4.0);
+        }
+        if (viewport.right() > imageRect.right()) {
+            viewport.moveRight(imageRect.right());
+        }
+        if (viewport.bottom() > imageRect.bottom()) {
+            viewport.moveBottom(imageRect.bottom());
+        }
+
+        painter.setPen(QPen(QColor("#ffffff"), 2));
+        painter.setBrush(QColor(255, 255, 255, 30));
+        painter.drawRect(viewport.adjusted(1, 1, -1, -1));
+    }
+
+private:
+    QRectF overviewImageRect() const
+    {
+        if (m_preview.isNull()) {
+            return {};
+        }
+
+        const QRectF content = QRectF(rect()).adjusted(8, 8, -8, -8);
+        QSizeF size = m_preview.size();
+        size.scale(content.size(), Qt::KeepAspectRatio);
+        return QRectF(
+            QPointF(content.center().x() - size.width() / 2.0,
+                    content.center().y() - size.height() / 2.0),
+            size);
+    }
+
+    void paintCheckerboard(QPainter *painter, const QRectF &area)
+    {
+        painter->save();
+        painter->setClipRect(area);
+        painter->setPen(Qt::NoPen);
+
+        const int cell = 8;
+        const int startX = static_cast<int>(std::floor(area.left()));
+        const int startY = static_cast<int>(std::floor(area.top()));
+        for (int y = startY; y < area.bottom(); y += cell) {
+            for (int x = startX; x < area.right(); x += cell) {
+                const bool alternate = ((x / cell) + (y / cell)) % 2 == 0;
+                painter->fillRect(QRect(x, y, cell, cell),
+                                  alternate ? QColor("#f8fafc") : QColor("#cbd5e1"));
+            }
+        }
+
+        painter->restore();
+    }
+
+    QPixmap m_preview;
+    QRectF m_normalizedViewportRect;
+};
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     setupUi();
+    m_renderTimer = new QTimer(this);
+    m_renderTimer->setSingleShot(true);
+    m_renderTimer->setInterval(16);
+    connect(m_renderTimer, &QTimer::timeout, this, [this] {
+        updateImageView();
+        if (!m_pendingScrollAnchor) {
+            return;
+        }
+
+        m_pendingScrollAnchor = false;
+        const QPointF newAnchor = m_pendingAnchorImage * m_scaleFactor;
+        m_scrollArea->horizontalScrollBar()->setValue(qRound(newAnchor.x() - m_pendingAnchorViewport.x()));
+        m_scrollArea->verticalScrollBar()->setValue(qRound(newAnchor.y() - m_pendingAnchorViewport.y()));
+    });
+    m_qualityRenderTimer = new QTimer(this);
+    m_qualityRenderTimer->setSingleShot(true);
+    m_qualityRenderTimer->setInterval(120);
+    connect(m_qualityRenderTimer, &QTimer::timeout, this, &MainWindow::updateImageView);
+    m_toastTimer = new QTimer(this);
+    m_toastTimer->setSingleShot(true);
+    m_toastTimer->setInterval(1800);
+    connect(m_toastTimer, &QTimer::timeout, this, [this] {
+        if (m_toastLabel) {
+            m_toastLabel->hide();
+        }
+    });
     setAcceptDrops(true);
     setWindowTitle(tr("NGImageViewer"));
     resize(980, 680);
@@ -267,9 +408,13 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     }
 
     auto *wheel = static_cast<QWheelEvent *>(event);
+    const auto *device = wheel->pointingDevice();
+    const bool fromTouchPad = device && device->type() == QInputDevice::DeviceType::TouchPad;
     const bool ctrlZoom = wheel->modifiers().testFlag(Qt::ControlModifier);
-    const bool mouseWheel = wheel->pixelDelta().isNull() && !wheel->angleDelta().isNull();
-    if (!ctrlZoom && !mouseWheel) {
+    const bool mouseVerticalWheel = !fromTouchPad
+                                    && (wheel->angleDelta().y() != 0
+                                        || wheel->pixelDelta().y() != 0);
+    if (!ctrlZoom && !mouseVerticalWheel) {
         return QMainWindow::eventFilter(watched, event);
     }
 
@@ -279,6 +424,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                               ? wheel->pixelDelta().y()
                               : wheel->pixelDelta().x();
         steps = -delta / 80.0;
+    } else if (ctrlZoom && wheel->angleDelta().y() != 0) {
+        steps = wheel->angleDelta().y() / static_cast<double>(QWheelEvent::DefaultDeltasPerStep);
+    } else if (mouseVerticalWheel && wheel->angleDelta().y() != 0) {
+        steps = wheel->angleDelta().y() / static_cast<double>(QWheelEvent::DefaultDeltasPerStep);
+    } else if (mouseVerticalWheel && wheel->pixelDelta().y() != 0) {
+        steps = wheel->pixelDelta().y() / 80.0;
     } else if (!wheel->angleDelta().isNull()) {
         const int delta = wheel->angleDelta().y() != 0
                               ? wheel->angleDelta().y()
@@ -306,6 +457,9 @@ void MainWindow::resizeEvent(QResizeEvent *event)
     if (m_fitToWindow && hasImage()) {
         updateImageView();
     }
+    repositionOverviewIndicator();
+    updateOverviewIndicator();
+    repositionToast();
 }
 
 void MainWindow::setupUi()
@@ -378,10 +532,26 @@ void MainWindow::setupUi()
         QToolButton:disabled {
             color: #aeb8c5;
         }
+        QToolButton::menu-indicator {
+            image: none;
+            width: 0;
+        }
         QFrame#toolbarSeparator {
             color: #e2e8f0;
         }
+        QLabel#toast {
+            background: rgba(15, 23, 42, 220);
+            border-radius: 7px;
+            color: #ffffff;
+            font-size: 13px;
+            padding: 9px 14px;
+        }
     )"));
+
+    m_toastLabel = new QLabel(central);
+    m_toastLabel->setObjectName(QStringLiteral("toast"));
+    m_toastLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_toastLabel->hide();
 }
 
 QWidget *MainWindow::createEmptyPage()
@@ -392,7 +562,7 @@ QWidget *MainWindow::createEmptyPage()
     layout->setSpacing(16);
 
     m_emptyIllustration = new QLabel(page);
-    m_emptyIllustration->setFixedSize(220, 140);
+    m_emptyIllustration->setFixedSize(230, 170);
     m_emptyIllustration->setPixmap(createEmptyIllustration(m_emptyIllustration->size()));
 
     auto *title = new QLabel(tr("NGImageViewer"), page);
@@ -436,6 +606,14 @@ QWidget *MainWindow::createImagePage()
     m_scrollArea->viewport()->installEventFilter(this);
     m_imageLabel->installEventFilter(this);
     layout->addWidget(m_scrollArea);
+
+    m_overviewIndicator = new ImageOverview(page);
+    m_overviewIndicator->hide();
+    m_overviewIndicator->raise();
+    connect(m_scrollArea->horizontalScrollBar(), &QScrollBar::valueChanged,
+            this, &MainWindow::updateOverviewIndicator);
+    connect(m_scrollArea->verticalScrollBar(), &QScrollBar::valueChanged,
+            this, &MainWindow::updateOverviewIndicator);
 
     return page;
 }
@@ -563,6 +741,7 @@ bool MainWindow::openStaticImage(const QString &filePath, bool showErrors)
 
     stopMovie();
     stopSvgRenderer();
+    invalidateOverviewPreview();
     m_isGif = false;
     m_isSvg = false;
     m_originalImage = image;
@@ -570,6 +749,7 @@ bool MainWindow::openStaticImage(const QString &filePath, bool showErrors)
     m_rotation = 0;
     m_fitToWindow = true;
     m_scaleFactor = 1.0;
+    m_pendingScrollAnchor = false;
     rebuildDirectorySequence(filePath);
     m_stack->setCurrentWidget(m_imagePage);
     updateImageView();
@@ -603,6 +783,7 @@ bool MainWindow::openSvgImage(const QString &filePath, bool showErrors)
 
     stopMovie();
     stopSvgRenderer();
+    invalidateOverviewPreview();
     m_svgRenderer = renderer;
     m_svgDefaultSize = defaultSize;
     m_isSvg = true;
@@ -612,6 +793,7 @@ bool MainWindow::openSvgImage(const QString &filePath, bool showErrors)
     m_rotation = 0;
     m_fitToWindow = true;
     m_scaleFactor = 1.0;
+    m_pendingScrollAnchor = false;
     rebuildDirectorySequence(filePath);
     m_stack->setCurrentWidget(m_imagePage);
     updateImageView();
@@ -643,8 +825,12 @@ bool MainWindow::openGif(const QString &filePath, bool showErrors)
     m_rotation = 0;
     m_fitToWindow = true;
     m_scaleFactor = 1.0;
+    m_pendingScrollAnchor = false;
 
-    connect(m_movie, &QMovie::frameChanged, this, [this] { updateImageView(); });
+    connect(m_movie, &QMovie::frameChanged, this, [this] {
+        invalidateOverviewPreview();
+        updateImageView();
+    });
     m_movie->start();
     rebuildDirectorySequence(filePath);
     m_stack->setCurrentWidget(m_imagePage);
@@ -704,6 +890,9 @@ void MainWindow::showEmptyState()
 {
     m_stack->setCurrentWidget(m_emptyPage);
     setWindowTitle(tr("NGImageViewer"));
+    if (m_overviewIndicator) {
+        m_overviewIndicator->hide();
+    }
     updateToolbarState();
 }
 
@@ -711,6 +900,7 @@ void MainWindow::clearCurrentImage()
 {
     stopMovie();
     stopSvgRenderer();
+    invalidateOverviewPreview();
     m_isGif = false;
     m_isSvg = false;
     m_originalImage = QImage();
@@ -718,6 +908,7 @@ void MainWindow::clearCurrentImage()
     m_rotation = 0;
     m_fitToWindow = true;
     m_scaleFactor = 1.0;
+    m_pendingScrollAnchor = false;
     m_directoryImages.clear();
     m_currentIndex = -1;
     m_svgDefaultSize = QSize();
@@ -725,6 +916,9 @@ void MainWindow::clearCurrentImage()
         m_imageLabel->clear();
         static_cast<ImageLabel *>(m_imageLabel)->setShowTransparencyGrid(false);
         m_imageLabel->resize(0, 0);
+    }
+    if (m_overviewIndicator) {
+        m_overviewIndicator->hide();
     }
     updateToolbarState();
 }
@@ -815,6 +1009,7 @@ void MainWindow::updateImageView()
         m_imageLabel->setPixmap(QPixmap::fromImage(display));
         static_cast<ImageLabel *>(m_imageLabel)->setShowTransparencyGrid(true);
         m_imageLabel->resize(display.size());
+        updateOverviewIndicator();
         return;
     }
 
@@ -838,18 +1033,172 @@ void MainWindow::updateImageView()
         viewport = viewport.expandedTo(QSize(1, 1));
         targetSize.scale(viewport, Qt::KeepAspectRatio);
     } else {
+        const double effectiveScale = std::min(m_scaleFactor, maximumManualScale());
+        if (!qFuzzyCompare(effectiveScale, m_scaleFactor)) {
+            m_scaleFactor = effectiveScale;
+        }
         targetSize = QSize(
-            std::max(1, qRound(display.width() * m_scaleFactor)),
-            std::max(1, qRound(display.height() * m_scaleFactor)));
+            std::max(1, qRound(display.width() * effectiveScale)),
+            std::max(1, qRound(display.height() * effectiveScale)));
     }
 
+    const Qt::TransformationMode transformationMode = m_pendingScrollAnchor
+                                                          ? Qt::FastTransformation
+                                                          : Qt::SmoothTransformation;
     const QPixmap pixmap = QPixmap::fromImage(display).scaled(
         targetSize,
         Qt::KeepAspectRatio,
-        Qt::SmoothTransformation);
+        transformationMode);
     m_imageLabel->setPixmap(pixmap);
     static_cast<ImageLabel *>(m_imageLabel)->setShowTransparencyGrid(display.hasAlphaChannel());
     m_imageLabel->resize(pixmap.size());
+    updateOverviewIndicator();
+}
+
+void MainWindow::requestImageViewUpdate()
+{
+    if (!m_renderTimer) {
+        updateImageView();
+        return;
+    }
+
+    if (!m_renderTimer->isActive()) {
+        m_renderTimer->start();
+    }
+}
+
+void MainWindow::invalidateOverviewPreview()
+{
+    m_overviewPreviewCache = QPixmap();
+    m_overviewPreviewCacheSize = QSize();
+    m_overviewPreviewDirty = true;
+}
+
+void MainWindow::updateOverviewIndicator()
+{
+    if (!m_overviewIndicator || !m_scrollArea || !m_imageLabel) {
+        return;
+    }
+
+    const QSize labelSize = m_imageLabel->size();
+    const QSize viewportSize = m_scrollArea->viewport()->size();
+    const double displayedScaleRatio = m_fitToWindow || qFuzzyIsNull(currentFitScale())
+                                           ? 1.0
+                                           : m_scaleFactor / currentFitScale();
+    const bool shouldShow = hasImage()
+                            && !m_fitToWindow
+                            && displayedScaleRatio >= 1.0
+                            && !labelSize.isEmpty()
+                            && (labelSize.width() > viewportSize.width()
+                                || labelSize.height() > viewportSize.height());
+    if (!shouldShow) {
+        m_overviewIndicator->hide();
+        return;
+    }
+
+    const QPixmap preview = createOverviewPixmap(QSize(152, 110));
+    if (preview.isNull()) {
+        m_overviewIndicator->hide();
+        return;
+    }
+
+    const QRectF imageRect(QPointF(0, 0), QSizeF(labelSize));
+    QRectF visibleRect(QPointF(-m_imageLabel->pos()), QSizeF(viewportSize));
+    visibleRect = visibleRect.intersected(imageRect);
+    if (visibleRect.isEmpty()) {
+        m_overviewIndicator->hide();
+        return;
+    }
+
+    auto *overview = static_cast<ImageOverview *>(m_overviewIndicator);
+    overview->setPreview(preview);
+    overview->setViewportRect(QRectF(
+        visibleRect.left() / labelSize.width(),
+        visibleRect.top() / labelSize.height(),
+        visibleRect.width() / labelSize.width(),
+        visibleRect.height() / labelSize.height()));
+
+    repositionOverviewIndicator();
+    m_overviewIndicator->show();
+    m_overviewIndicator->raise();
+}
+
+void MainWindow::repositionOverviewIndicator()
+{
+    if (!m_overviewIndicator || !m_imagePage) {
+        return;
+    }
+
+    const int margin = 18;
+    m_overviewIndicator->move(
+        std::max(margin, m_imagePage->width() - m_overviewIndicator->width() - margin),
+        margin);
+}
+
+QPixmap MainWindow::createOverviewPixmap(const QSize &targetSize)
+{
+    if (!m_overviewPreviewDirty
+        && m_overviewPreviewCacheSize == targetSize
+        && !m_overviewPreviewCache.isNull()) {
+        return m_overviewPreviewCache;
+    }
+
+    const QSize imageSize = transformedImageSize();
+    if (imageSize.isEmpty() || targetSize.isEmpty()) {
+        return {};
+    }
+
+    QSize previewSize = imageSize;
+    previewSize.scale(targetSize, Qt::KeepAspectRatio);
+    previewSize = previewSize.expandedTo(QSize(1, 1));
+
+    if (m_isSvg && m_svgRenderer) {
+        QSize renderSize = previewSize;
+        if (m_rotation == 90 || m_rotation == 270) {
+            renderSize.transpose();
+        }
+
+        QImage rendered(renderSize, QImage::Format_ARGB32_Premultiplied);
+        rendered.fill(Qt::transparent);
+        QPainter painter(&rendered);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setRenderHint(QPainter::TextAntialiasing);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        m_svgRenderer->render(&painter, QRectF(QPointF(0, 0), QSizeF(renderSize)));
+        painter.end();
+
+        if (m_rotation == 0) {
+            m_overviewPreviewCache = QPixmap::fromImage(rendered);
+        } else {
+            QTransform transform;
+            transform.rotate(m_rotation);
+            m_overviewPreviewCache = QPixmap::fromImage(rendered.transformed(transform, Qt::SmoothTransformation));
+        }
+        m_overviewPreviewCacheSize = targetSize;
+        m_overviewPreviewDirty = false;
+        return m_overviewPreviewCache;
+    }
+
+    QImage source;
+    if (m_isGif && m_movie) {
+        source = m_movie->currentImage();
+    } else {
+        source = m_originalImage;
+    }
+    if (source.isNull()) {
+        return {};
+    }
+
+    QTransform transform;
+    transform.rotate(m_rotation);
+    const QImage display = source.transformed(transform, Qt::SmoothTransformation);
+    m_overviewPreviewCache = QPixmap::fromImage(display).scaled(
+        previewSize,
+        Qt::KeepAspectRatio,
+        Qt::SmoothTransformation);
+    m_overviewPreviewCacheSize = targetSize;
+    m_overviewPreviewDirty = false;
+    return m_overviewPreviewCache;
 }
 
 QSize MainWindow::transformedImageSize() const
@@ -890,8 +1239,24 @@ double MainWindow::currentFitScale() const
 
 double MainWindow::maximumManualScale() const
 {
-    const double baseLimit = m_isSvg ? 256.0 : 20.0;
-    return std::max(baseLimit, currentFitScale() * 4.0);
+    const double fitScale = currentFitScale();
+    if (m_isSvg) {
+        return std::max(256.0, fitScale * 4.0);
+    }
+
+    const QSize imageSize = transformedImageSize();
+    if (imageSize.isEmpty()) {
+        return std::max(1.0, fitScale);
+    }
+
+    constexpr double kMaxRenderedPixels = 48000000.0;
+    constexpr double kMaxRenderedSide = 12000.0;
+    const double sourcePixels = imageSize.width() * static_cast<double>(imageSize.height());
+    const double pixelLimit = std::sqrt(kMaxRenderedPixels / sourcePixels);
+    const double sideLimit = kMaxRenderedSide / std::max(imageSize.width(), imageSize.height());
+    const double budgetLimit = std::min(pixelLimit, sideLimit);
+    const double requestedLimit = std::max(20.0, fitScale * 4.0);
+    return std::max(fitScale, std::min(requestedLimit, budgetLimit));
 }
 
 void MainWindow::zoomBy(double factor)
@@ -909,16 +1274,21 @@ void MainWindow::zoomAt(double factor, const QPoint &viewportPosition)
     }
 
     const double oldScale = m_fitToWindow ? currentFitScale() : m_scaleFactor;
-    const QPoint labelPosition = m_imageLabel->pos();
-    const QPointF imageAnchor = (QPointF(viewportPosition - labelPosition)) / oldScale;
+    QPointF labelPosition = m_imageLabel->pos();
+    if (m_pendingScrollAnchor && !m_fitToWindow) {
+        labelPosition = QPointF(m_pendingAnchorViewport) - m_pendingAnchorImage * oldScale;
+    }
+    const QPointF imageAnchor = (QPointF(viewportPosition) - labelPosition) / oldScale;
 
     m_fitToWindow = false;
     m_scaleFactor = std::clamp(oldScale * factor, 0.05, maximumManualScale());
-    updateImageView();
-
-    const QPointF newAnchor = imageAnchor * m_scaleFactor;
-    m_scrollArea->horizontalScrollBar()->setValue(qRound(newAnchor.x() - viewportPosition.x()));
-    m_scrollArea->verticalScrollBar()->setValue(qRound(newAnchor.y() - viewportPosition.y()));
+    m_pendingScrollAnchor = true;
+    m_pendingAnchorImage = imageAnchor;
+    m_pendingAnchorViewport = viewportPosition;
+    requestImageViewUpdate();
+    if (m_qualityRenderTimer) {
+        m_qualityRenderTimer->start();
+    }
     updateToolbarState();
 }
 
@@ -940,8 +1310,9 @@ void MainWindow::toggleFitMode()
         return;
     }
     m_fitToWindow = !m_fitToWindow;
+    m_pendingScrollAnchor = false;
     if (!m_fitToWindow) {
-        m_scaleFactor = 1.0;
+        m_scaleFactor = std::min(1.0, maximumManualScale());
     }
     updateImageView();
     updateToolbarState();
@@ -953,7 +1324,8 @@ void MainWindow::showActualSize()
         return;
     }
     m_fitToWindow = false;
-    m_scaleFactor = 1.0;
+    m_scaleFactor = std::min(1.0, maximumManualScale());
+    m_pendingScrollAnchor = false;
     updateImageView();
     updateToolbarState();
 }
@@ -967,6 +1339,8 @@ void MainWindow::rotateBy(int degrees)
     if (m_rotation < 0) {
         m_rotation += 360;
     }
+    m_pendingScrollAnchor = false;
+    invalidateOverviewPreview();
     updateImageView();
 }
 
@@ -1095,8 +1469,36 @@ void MainWindow::copyCurrentImageToClipboard()
 
     if (!image.isNull()) {
         QApplication::clipboard()->setImage(image);
-        statusBar()->showMessage(tr("已复制到剪切板"), 1800);
+        showToast(tr("已复制到剪切板"));
     }
+}
+
+void MainWindow::showToast(const QString &message)
+{
+    if (!m_toastLabel) {
+        return;
+    }
+
+    m_toastLabel->setText(message);
+    m_toastLabel->adjustSize();
+    repositionToast();
+    m_toastLabel->show();
+    m_toastLabel->raise();
+    if (m_toastTimer) {
+        m_toastTimer->start();
+    }
+}
+
+void MainWindow::repositionToast()
+{
+    if (!m_toastLabel || !centralWidget()) {
+        return;
+    }
+
+    const int x = std::max(12, (centralWidget()->width() - m_toastLabel->width()) / 2);
+    const int contentBottom = m_stack ? m_stack->height() : centralWidget()->height();
+    const int y = std::max(12, contentBottom - m_toastLabel->height() - 18);
+    m_toastLabel->move(x, y);
 }
 
 void MainWindow::showAboutDialog()
