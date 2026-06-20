@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QLocale>
 #include <QTranslator>
 
@@ -19,5 +20,11 @@ int main(int argc, char *argv[])
     }
     MainWindow w;
     w.show();
+
+    const QStringList args = QCoreApplication::arguments();
+    if (args.size() > 1) {
+        w.openImage(args.at(1), true);
+    }
+
     return QApplication::exec();
 }

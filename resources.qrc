@@ -1,0 +1,15 @@
+<RCC>
+  <qresource prefix="/icons">
+    <file>resources/icons/zoom-in.svg</file>
+    <file>resources/icons/zoom-out.svg</file>
+    <file>resources/icons/fit-to-window.svg</file>
+    <file>resources/icons/actual-size.svg</file>
+    <file>resources/icons/open-file.svg</file>
+    <file>resources/icons/previous.svg</file>
+    <file>resources/icons/next.svg</file>
+    <file>resources/icons/rotate-cw.svg</file>
+    <file>resources/icons/rotate-ccw.svg</file>
+    <file>resources/icons/delete.svg</file>
+    <file>resources/icons/more.svg</file>
+  </qresource>
+</RCC>
