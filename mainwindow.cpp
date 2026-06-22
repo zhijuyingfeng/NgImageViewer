@@ -2,6 +2,7 @@
 
 #include "imageformats.h"
 #include "imagewidgets.h"
+#include "rawdecoder.h"
 
 #include <QAction>
 #include <QApplication>
@@ -173,6 +174,9 @@ bool MainWindow::openImage(const QString &filePath, bool showErrors)
         return false;
     }
 
+    if (ImageFormats::isRawFile(filePath)) {
+        return openRawImage(filePath, showErrors);
+    }
     if (info.suffix().compare(QStringLiteral("gif"), Qt::CaseInsensitive) == 0) {
         return openGif(filePath, showErrors);
     }
@@ -655,6 +659,47 @@ bool MainWindow::openStaticImage(const QString &filePath, bool showErrors)
     m_isGif = false;
     m_isSvg = false;
     m_originalImage = image;
+    m_currentFilePath = filePath;
+    m_rotation = 0;
+    m_fitToWindow = true;
+    m_scaleFactor = 1.0;
+    m_pendingScrollAnchor = false;
+    rebuildDirectorySequence(filePath);
+    m_stack->setCurrentWidget(m_imagePage);
+    m_scrollArea->setFocus(Qt::OtherFocusReason);
+    updateImageView();
+    QTimer::singleShot(0, this, &MainWindow::updateImageView);
+    updateToolbarState();
+    updateZoomStatus();
+    setWindowTitle(QFileInfo(filePath).fileName() + tr(" - NGImageViewer"));
+    return true;
+}
+
+bool MainWindow::openRawImage(const QString &filePath, bool showErrors)
+{
+    if (!RawDecoder::isAvailable()) {
+        if (showErrors) {
+            showOpenError(RawDecoder::unavailableMessage());
+        }
+        return false;
+    }
+
+    const RawDecoder::DecodeResult result = RawDecoder::decode(filePath);
+    if (result.image.isNull()) {
+        if (showErrors) {
+            showOpenError(result.errorMessage.isEmpty()
+                              ? tr("RAW 图片打开失败，请检查文件是否损坏")
+                              : result.errorMessage);
+        }
+        return false;
+    }
+
+    stopMovie();
+    stopSvgRenderer();
+    invalidateOverviewPreview();
+    m_isGif = false;
+    m_isSvg = false;
+    m_originalImage = result.image;
     m_currentFilePath = filePath;
     m_rotation = 0;
     m_fitToWindow = true;

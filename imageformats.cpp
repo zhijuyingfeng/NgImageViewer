@@ -18,8 +18,63 @@ const QSet<QString> &requiredFormats()
         QStringLiteral("svg"),
         QStringLiteral("heic"),
         QStringLiteral("heif"),
+        QStringLiteral("3fr"),
+        QStringLiteral("arw"),
+        QStringLiteral("bay"),
+        QStringLiteral("cr2"),
+        QStringLiteral("cr3"),
+        QStringLiteral("crw"),
+        QStringLiteral("dcr"),
+        QStringLiteral("dng"),
+        QStringLiteral("erf"),
+        QStringLiteral("kdc"),
+        QStringLiteral("mos"),
+        QStringLiteral("mrw"),
+        QStringLiteral("nef"),
+        QStringLiteral("nrw"),
+        QStringLiteral("orf"),
+        QStringLiteral("pef"),
+        QStringLiteral("raf"),
+        QStringLiteral("raw"),
+        QStringLiteral("rw2"),
+        QStringLiteral("rwl"),
+        QStringLiteral("sr2"),
+        QStringLiteral("srf"),
+        QStringLiteral("srw"),
+        QStringLiteral("x3f"),
     };
     return formats;
+}
+
+const QStringList &rawNameFilters()
+{
+    static const QStringList filters = {
+        QStringLiteral("*.3fr"),
+        QStringLiteral("*.arw"),
+        QStringLiteral("*.bay"),
+        QStringLiteral("*.cr2"),
+        QStringLiteral("*.cr3"),
+        QStringLiteral("*.crw"),
+        QStringLiteral("*.dcr"),
+        QStringLiteral("*.dng"),
+        QStringLiteral("*.erf"),
+        QStringLiteral("*.kdc"),
+        QStringLiteral("*.mos"),
+        QStringLiteral("*.mrw"),
+        QStringLiteral("*.nef"),
+        QStringLiteral("*.nrw"),
+        QStringLiteral("*.orf"),
+        QStringLiteral("*.pef"),
+        QStringLiteral("*.raf"),
+        QStringLiteral("*.raw"),
+        QStringLiteral("*.rw2"),
+        QStringLiteral("*.rwl"),
+        QStringLiteral("*.sr2"),
+        QStringLiteral("*.srf"),
+        QStringLiteral("*.srw"),
+        QStringLiteral("*.x3f"),
+    };
+    return filters;
 }
 
 const QStringList &requiredRuntimeFormats()
@@ -28,8 +83,6 @@ const QStringList &requiredRuntimeFormats()
         QStringLiteral("gif"),
         QStringLiteral("webp"),
         QStringLiteral("svg"),
-        QStringLiteral("heic"),
-        QStringLiteral("heif"),
     };
     return formats;
 }
@@ -44,9 +97,26 @@ bool isSupportedFile(const QString &filePath)
     return requiredFormats().contains(suffix);
 }
 
+bool isRawFile(const QString &filePath)
+{
+    const QString suffix = QFileInfo(filePath).suffix().toLower();
+    return requiredFormats().contains(suffix)
+           && !QSet<QString>({
+                  QStringLiteral("jpg"),
+                  QStringLiteral("jpeg"),
+                  QStringLiteral("png"),
+                  QStringLiteral("bmp"),
+                  QStringLiteral("gif"),
+                  QStringLiteral("webp"),
+                  QStringLiteral("svg"),
+                  QStringLiteral("heic"),
+                  QStringLiteral("heif"),
+              }).contains(suffix);
+}
+
 QStringList imageNameFilters()
 {
-    return {
+    QStringList filters = {
         QStringLiteral("*.jpg"),
         QStringLiteral("*.jpeg"),
         QStringLiteral("*.png"),
@@ -57,6 +127,8 @@ QStringList imageNameFilters()
         QStringLiteral("*.heic"),
         QStringLiteral("*.heif"),
     };
+    filters.append(rawNameFilters());
+    return filters;
 }
 
 QStringList missingRequiredRuntimeFormats()
@@ -78,7 +150,19 @@ QStringList missingRequiredRuntimeFormats()
 
 QString openDialogFilter()
 {
-    return QStringLiteral("Images (*.jpg *.jpeg *.png *.bmp *.gif *.webp *.svg *.heic *.heif)");
+    QStringList filters = {
+        QStringLiteral("*.jpg"),
+        QStringLiteral("*.jpeg"),
+        QStringLiteral("*.png"),
+        QStringLiteral("*.bmp"),
+        QStringLiteral("*.gif"),
+        QStringLiteral("*.webp"),
+        QStringLiteral("*.svg"),
+        QStringLiteral("*.heic"),
+        QStringLiteral("*.heif"),
+    };
+    filters.append(rawNameFilters());
+    return QStringLiteral("Images (%1)").arg(filters.join(QLatin1Char(' ')));
 }
 
 } // namespace ImageFormats

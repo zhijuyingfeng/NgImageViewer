@@ -58,6 +58,7 @@ private:
     QStringList missingRequiredImageFormats() const;
 
     bool openStaticImage(const QString &filePath, bool showErrors);
+    bool openRawImage(const QString &filePath, bool showErrors);
     bool openSvgImage(const QString &filePath, bool showErrors);
     bool openGif(const QString &filePath, bool showErrors);
     void chooseImage();
