@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="backgroundGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#EAF8FF"/>
+    </linearGradient>
+    <linearGradient id="skyGradient" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#EAF8FF"/>
+      <stop offset="45%" stop-color="#BDEEFF"/>
+      <stop offset="100%" stop-color="#43C5FD"/>
+    </linearGradient>
+    <linearGradient id="mountainGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#43C5FD"/>
+      <stop offset="100%" stop-color="#1EA8E8"/>
+    </linearGradient>
+    <radialGradient id="sunGlowGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FAD300" stop-opacity="0.42"/>
+      <stop offset="60%" stop-color="#FAD300" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#FAD300" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+<!--App icon base-->
+  <path d="
+      M282 72
+      H742
+      C858 72 952 166 952 282
+      V742
+      C952 858 858 952 742 952
+      H282
+      C166 952 72 858 72 742
+      V282
+      C72 166 166 72 282 72
+      Z
+    " fill="url(#backgroundGradient)"/>
+<!--Outer blue border-->
+  <path d="
+      M282 92
+      H742
+      C847 92 932 177 932 282
+      V742
+      C932 847 847 932 742 932
+      H282
+      C177 932 92 847 92 742
+      V282
+      C92 177 177 92 282 92
+      Z
+    " fill="none" stroke="#43C5FD" stroke-width="18" opacity="0.38"/>
+<!--White image viewer frame, moved down for vertical balance-->
+  <path d="
+      M240 184
+      H784
+      C844 184 892 232 892 292
+      V732
+      C892 792 844 840 784 840
+      H240
+      C180 840 132 792 132 732
+      V292
+      C132 232 180 184 240 184
+      Z
+    " fill="#FFFFFF"/>
+<!--Image area background-->
+  <path d="
+      M238 202
+      H786
+      C834.6 202 874 241.4 874 290
+      V734
+      C874 782.6 834.6 822 786 822
+      H238
+      C189.4 822 150 782.6 150 734
+      V290
+      C150 241.4 189.4 202 238 202
+      Z
+    " fill="url(#skyGradient)"/>
+<!--Slight blue overlay-->
+  <path d="
+      M238 202
+      H786
+      C834.6 202 874 241.4 874 290
+      V734
+      C874 782.6 834.6 822 786 822
+      H238
+      C189.4 822 150 782.6 150 734
+      V290
+      C150 241.4 189.4 202 238 202
+      Z
+    " fill="#43C5FD" opacity="0.08"/>
+<!--Sun glow-->
+  <circle cx="704" cy="389" r="135" fill="url(#sunGlowGradient)"/>
+<!--Sun-->
+  <circle cx="704" cy="389" r="96" fill="#FAD300"/>
+<!--Back mountain-->
+  <path d="
+      M150 734
+      L336 500
+      C352 480 381 480 397 500
+      L526 662
+      L610 566
+      C627 547 656 548 672 568
+      L874 734
+      C874 782.6 834.6 822 786 822
+      H238
+      C189.4 822 150 782.6 150 734
+      Z
+    " fill="#43C5FD" opacity="0.45"/>
+<!--Front mountain-->
+  <path d="
+      M150 734
+      L386 460
+      C406 435 445 436 464 463
+      L610 672
+      L704 560
+      C723 537 759 539 776 564
+      L874 734
+      C874 782.6 834.6 822 786 822
+      H238
+      C189.4 822 150 782.6 150 734
+      Z
+    " fill="url(#mountainGradient)"/>
+<!--Snow highlights-->
+  <path d="
+      M386 460
+      C406 435 445 436 464 463
+      L529 556
+      L466 528
+      L428 586
+      L390 534
+      L332 567
+      Z
+    " fill="#FFFFFF" opacity="0.96"/>
+  <path d="
+      M704 560
+      C723 537 759 539 776 564
+      L826 648
+      L765 616
+      L731 664
+      L698 622
+      L652 654
+      Z
+    " fill="#FFFFFF" opacity="0.92"/>
+<!--Foreground soft base-->
+  <path d="
+      M150 734
+      C268 726 348 754 438 734
+      C546 710 640 752 748 726
+      C806 712 846 720 874 734
+      C874 782.6 834.6 822 786 822
+      H238
+      C189.4 822 150 782.6 150 734
+      Z
+    " fill="#43C5FD" opacity="0.18"/>
+<!--Image area border drawn last-->
+  <path d="
+      M238 202
+      H786
+      C834.6 202 874 241.4 874 290
+      V734
+      C874 782.6 834.6 822 786 822
+      H238
+      C189.4 822 150 782.6 150 734
+      V290
+      C150 241.4 189.4 202 238 202
+      Z
+    " fill="none" stroke="#43C5FD" stroke-width="20"/>
+<!--Viewer focus corners, moved down together-->
+  <g fill="none" stroke="#43C5FD" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
+    <path d="M250 312 L250 260 L302 260"/>
+    <path d="M774 260 L826 260 L826 312"/>
+    <path d="M826 712 L826 764 L774 764"/>
+    <path d="M302 764 L250 764 L250 712"/>
+  </g>
+</svg>
+
