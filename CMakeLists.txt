@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.19)
+
+if(APPLE AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum macOS version")
+endif()
+
 project(NgImageViewer LANGUAGES CXX)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Svg LinguistTools)
@@ -6,6 +11,8 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Svg LinguistTools)
 qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 option(NGIMAGEVIEWER_ENABLE_RAW "Enable RAW image decoding through LibRaw when available" ON)
+
+set(NGIMAGEVIEWER_MACOS_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/macos/NgImageViewer.icns")
 
 qt_add_executable(NgImageViewer
     WIN32 MACOSX_BUNDLE
@@ -18,7 +25,16 @@ qt_add_executable(NgImageViewer
     mainwindow.h
     rawdecoder.cpp
     rawdecoder.h
+    ${NGIMAGEVIEWER_MACOS_ICON}
     resources.qrc
+)
+
+set_source_files_properties(${NGIMAGEVIEWER_MACOS_ICON} PROPERTIES
+    MACOSX_PACKAGE_LOCATION Resources
+)
+
+set_target_properties(NgImageViewer PROPERTIES
+    MACOSX_BUNDLE_ICON_FILE NgImageViewer.icns
 )
 
 qt_add_translations(

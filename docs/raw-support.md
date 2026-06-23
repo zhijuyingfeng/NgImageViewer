@@ -70,6 +70,23 @@ The app links to LibRaw when enabled. For a redistributable `.app`, make sure th
 and its dependent codec libraries are bundled and their install names are valid for the app bundle.
 Run `otool -L` on the executable to inspect unresolved dynamic library paths.
 
+The default packaging script only handles the Release app and refuses Debug builds:
+
+```bash
+scripts/package-macos.sh
+```
+
+It runs `macdeployqt` first for Qt frameworks/plugins, then `dylibbundler` for LibRaw and other
+third-party dylibs. Install `dylibbundler` before packaging:
+
+```bash
+brew install dylibbundler
+```
+
+The default macOS deployment target is `15.0`, matching the Homebrew LibRaw dylib used for local release
+packaging. If you need to support older macOS versions, build LibRaw and its codec dependencies yourself
+with the same lower `CMAKE_OSX_DEPLOYMENT_TARGET`, then reconfigure this project with that target.
+
 ### Windows
 
 Run `windeployqt` for Qt dependencies, then copy LibRaw runtime DLLs next to `NgImageViewer.exe`.
