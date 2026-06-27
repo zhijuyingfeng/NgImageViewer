@@ -24,6 +24,7 @@ class QObject;
 class QPropertyAnimation;
 class QSvgRenderer;
 class QTimer;
+class QWheelEvent;
 class ImageLabel;
 class ImageOverview;
 
@@ -90,6 +91,7 @@ private:
     bool handleKeyboardShortcut(QKeyEvent *event);
     bool handleKeyboardPan(QKeyEvent *event);
     bool handleMousePanEvent(QObject *watched, QEvent *event);
+    bool handleWheelZoomEvent(QObject *watched, QWheelEvent *event);
     void zoomBy(double factor);
     void zoomAt(double factor, const QPoint &viewportPosition);
     bool handleNativeZoomGesture(QNativeGestureEvent *event);

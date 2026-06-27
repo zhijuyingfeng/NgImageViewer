@@ -6,6 +6,11 @@ endif()
 
 project(NgImageViewer LANGUAGES CXX)
 
+include(GNUInstallDirs)
+if(WIN32)
+    enable_language(RC)
+endif()
+
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Svg LinguistTools)
 
 qt_standard_project_setup()
@@ -14,21 +19,31 @@ option(NGIMAGEVIEWER_ENABLE_RAW "Enable RAW image decoding through LibRaw when a
 option(NGIMAGEVIEWER_ENABLE_HEIF "Enable HEIF/HEIC decoding through bundled libheif when available" ON)
 
 set(NGIMAGEVIEWER_MACOS_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/macos/NgImageViewer.icns")
+set(NGIMAGEVIEWER_LINUX_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/app-icon.svg")
+set(NGIMAGEVIEWER_LINUX_DESKTOP_FILE "${CMAKE_CURRENT_SOURCE_DIR}/resources/linux/ngimageviewer.desktop")
+set(NGIMAGEVIEWER_WINDOWS_RC "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows/NgImageViewer.rc")
+set(NGIMAGEVIEWER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+set(NGIMAGEVIEWER_PLATFORM_SOURCES)
+if(WIN32)
+    list(APPEND NGIMAGEVIEWER_PLATFORM_SOURCES "${NGIMAGEVIEWER_WINDOWS_RC}")
+endif()
 
 qt_add_executable(NgImageViewer
     WIN32 MACOSX_BUNDLE
-    main.cpp
-    imageformats.cpp
-    imageformats.h
-    imagewidgets.cpp
-    imagewidgets.h
-    mainwindow.cpp
-    mainwindow.h
-    heifdecoder.cpp
-    heifdecoder.h
-    rawdecoder.cpp
-    rawdecoder.h
+    ${NGIMAGEVIEWER_SOURCE_DIR}/main.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/imageformats.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/imageformats.h
+    ${NGIMAGEVIEWER_SOURCE_DIR}/imagewidgets.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/imagewidgets.h
+    ${NGIMAGEVIEWER_SOURCE_DIR}/mainwindow.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/mainwindow.h
+    ${NGIMAGEVIEWER_SOURCE_DIR}/heifdecoder.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/heifdecoder.h
+    ${NGIMAGEVIEWER_SOURCE_DIR}/rawdecoder.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/rawdecoder.h
     ${NGIMAGEVIEWER_MACOS_ICON}
+    ${NGIMAGEVIEWER_PLATFORM_SOURCES}
     resources.qrc
 )
 
@@ -52,6 +67,15 @@ target_link_libraries(NgImageViewer
         Qt::Widgets
         Qt::Svg
 )
+
+target_include_directories(NgImageViewer
+    PRIVATE
+        "${NGIMAGEVIEWER_SOURCE_DIR}"
+)
+
+if(WIN32)
+    target_include_directories(NgImageViewer PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows")
+endif()
 
 set(NGIMAGEVIEWER_HAS_LIBRAW OFF)
 if(NGIMAGEVIEWER_ENABLE_RAW)
@@ -199,6 +223,14 @@ install(TARGETS NgImageViewer
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+
+if(UNIX AND NOT APPLE)
+    install(FILES "${NGIMAGEVIEWER_LINUX_ICON}"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
+        RENAME ngimageviewer.svg)
+    install(FILES "${NGIMAGEVIEWER_LINUX_DESKTOP_FILE}"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+endif()
 
 qt_generate_deploy_app_script(
     TARGET NgImageViewer

@@ -1,0 +1,150 @@
+# NgImageViewer
+
+NgImageViewer is a cross-platform desktop image viewer built with Qt 6. It focuses on fast local image browsing, smooth zooming and panning, common viewer shortcuts, and bundled support for RAW and HEIF/HEIC formats.
+
+![NgImageViewer main window](screenshots/mainWindow.png)
+
+## Features
+
+- Open JPG, PNG, BMP, GIF, WEBP, SVG, HEIF/HEIC, and common RAW formats.
+- Fit-to-window and actual-size viewing.
+- Mouse wheel, touchpad gesture, `+` and `-` zoom controls.
+- Mouse-centered zooming and drag-to-pan when zoomed in.
+- Keyboard navigation for previous/next image and panning.
+- Delete current image, copy image/path, and reveal in Finder or the platform file manager.
+- Zoom status overlay, overview indicator for zoomed images, and image information dialog.
+- Bundled LibRaw, libheif, and libde265 integration for consistent RAW and HEIF/HEIC behavior across platforms.
+
+## Requirements
+
+- CMake 3.19 or newer.
+- Qt 6.5 or newer with `Core`, `Gui`, `Widgets`, `Svg`, and `LinguistTools`.
+- A C++17-capable compiler.
+- Git submodules initialized.
+
+NgImageViewer intentionally uses bundled third-party image libraries for RAW and HEIF/HEIC. Do not rely on system `libraw`, `libheif`, or `libde265`.
+
+```bash
+git submodule update --init --recursive
+```
+
+## Build Options
+
+Both options are enabled by default:
+
+```bash
+-DNGIMAGEVIEWER_ENABLE_RAW=ON
+-DNGIMAGEVIEWER_ENABLE_HEIF=ON
+```
+
+If enabled, missing submodules cause CMake to fail early instead of falling back to system libraries.
+
+## Build On macOS
+
+Install Qt 6 and configure a Release build:
+
+```bash
+git submodule update --init --recursive
+cmake -S . -B build/Qt_6_11_1_for_macOS_Release \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.x.x/macos
+cmake --build build/Qt_6_11_1_for_macOS_Release --target NgImageViewer -j
+```
+
+The app bundle is generated at:
+
+```bash
+build/Qt_6_11_1_for_macOS_Release/NgImageViewer.app
+```
+
+To package a redistributable Release app, install `dylibbundler` and run:
+
+```bash
+brew install dylibbundler
+scripts/package-macos.sh
+```
+
+To thin the packaged app to one architecture:
+
+```bash
+NGIMAGEVIEWER_THIN_ARCH=arm64 scripts/package-macos.sh
+```
+
+The packaging script refuses to package Debug builds.
+
+## Build On Linux
+
+Install Qt 6 development packages and build tools. On Debian/Ubuntu, package names are typically:
+
+```bash
+sudo apt update
+sudo apt install build-essential cmake ninja-build pkg-config qt6-base-dev qt6-svg-dev qt6-tools-dev
+```
+
+Then configure and build:
+
+```bash
+git submodule update --init --recursive
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
+
+To install the binary, desktop file, and hicolor icon:
+
+```bash
+cmake --install build --prefix ~/.local
+gtk-update-icon-cache ~/.local/share/icons/hicolor 2>/dev/null || true
+update-desktop-database ~/.local/share/applications 2>/dev/null || true
+```
+
+If you use the Qt online installer instead of system Qt packages, pass `CMAKE_PREFIX_PATH`:
+
+```bash
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.x.x/gcc_64
+```
+
+## Build On Windows
+
+Install Qt 6 for the same compiler you plan to use, such as MSVC or MinGW. Keep Qt, CMake, and the compiler toolchain consistent.
+
+Example with MSVC from a Developer PowerShell:
+
+```powershell
+git submodule update --init --recursive
+cmake -S . -B build -G "Ninja" `
+  -DCMAKE_BUILD_TYPE=Release `
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.x.x\msvc2022_64
+cmake --build build --target NgImageViewer -j
+```
+
+Example with MinGW:
+
+```powershell
+git submodule update --init --recursive
+cmake -S . -B build -G "Ninja" `
+  -DCMAKE_BUILD_TYPE=Release `
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.x.x\mingw_64
+cmake --build build --target NgImageViewer -j
+```
+
+After building, use `windeployqt` from the same Qt kit:
+
+```powershell
+C:\Qt\6.x.x\msvc2022_64\bin\windeployqt.exe build\NgImageViewer.exe
+```
+
+The Windows executable includes the application icon through a `.rc` resource file.
+
+## Development Notes
+
+- RAW support is implemented with bundled LibRaw submodules.
+- HEIF/HEIC support is implemented with bundled libheif and libde265; no Qt HEIF image plugin is required.
+- SVG images are rendered as vector content and can be zoomed without raster quality loss.
+- Large bitmap zooming uses viewport-aware rendering to avoid full-size pixmap allocation.
+
+More format-specific details are available in:
+
+- [RAW support](docs/raw-support.md)
+- [HEIF/HEIC support](docs/heif-support.md)

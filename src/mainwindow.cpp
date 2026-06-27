@@ -20,7 +20,6 @@
 #include <QGraphicsOpacityEffect>
 #include <QHBoxLayout>
 #include <QImageReader>
-#include <QInputDevice>
 #include <QKeyEvent>
 #include <QLocale>
 #include <QMenu>
@@ -243,6 +242,12 @@ bool MainWindow::event(QEvent *event)
             return true;
         }
     }
+    if (event->type() == QEvent::Wheel && hasImage()) {
+        auto *wheel = static_cast<QWheelEvent *>(event);
+        if (handleWheelZoomEvent(this, wheel)) {
+            return true;
+        }
+    }
 
     return QMainWindow::event(event);
 }
@@ -282,47 +287,10 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     }
 
     auto *wheel = static_cast<QWheelEvent *>(event);
-    const auto *device = wheel->pointingDevice();
-    const bool fromTouchPad = device && device->type() == QInputDevice::DeviceType::TouchPad;
-    const bool ctrlZoom = wheel->modifiers().testFlag(Qt::ControlModifier);
-    const bool mouseVerticalWheel = !fromTouchPad
-                                    && (wheel->angleDelta().y() != 0
-                                        || wheel->pixelDelta().y() != 0);
-    if (!ctrlZoom && !mouseVerticalWheel) {
-        return QMainWindow::eventFilter(watched, event);
+    if (handleWheelZoomEvent(watched, wheel)) {
+        return true;
     }
-
-    double steps = 0.0;
-    if (ctrlZoom && !wheel->pixelDelta().isNull()) {
-        const int delta = wheel->pixelDelta().y() != 0
-                              ? wheel->pixelDelta().y()
-                              : wheel->pixelDelta().x();
-        steps = -delta / 80.0;
-    } else if (ctrlZoom && wheel->angleDelta().y() != 0) {
-        steps = wheel->angleDelta().y() / static_cast<double>(QWheelEvent::DefaultDeltasPerStep);
-    } else if (mouseVerticalWheel && wheel->angleDelta().y() != 0) {
-        steps = wheel->angleDelta().y() / static_cast<double>(QWheelEvent::DefaultDeltasPerStep);
-    } else if (mouseVerticalWheel && wheel->pixelDelta().y() != 0) {
-        steps = wheel->pixelDelta().y() / 80.0;
-    } else if (!wheel->angleDelta().isNull()) {
-        const int delta = wheel->angleDelta().y() != 0
-                              ? wheel->angleDelta().y()
-                              : wheel->angleDelta().x();
-        steps = delta / static_cast<double>(QWheelEvent::DefaultDeltasPerStep);
-    }
-
-    if (qFuzzyIsNull(steps)) {
-        return QMainWindow::eventFilter(watched, event);
-    }
-
-    QPoint viewportPosition = m_scrollArea->viewport()->rect().center();
-    if (auto *widget = qobject_cast<QWidget *>(watched)) {
-        viewportPosition = widget->mapTo(m_scrollArea->viewport(), wheel->position().toPoint());
-    }
-
-    zoomAt(std::pow(1.18, steps), viewportPosition);
-    wheel->accept();
-    return true;
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
@@ -1213,7 +1181,7 @@ void MainWindow::updateZoomStatus(bool restartHideTimer)
     }
 
     if (m_fitToWindow) {
-        m_zoomStatusLabel->setText(tr("Fit"));
+        m_zoomStatusLabel->setText(tr("Fit (%1%)").arg(qRound(currentFitScale() * 100.0)));
     } else {
         m_zoomStatusLabel->setText(tr("%1%").arg(qRound(m_scaleFactor * 100.0)));
     }
@@ -1652,6 +1620,45 @@ bool MainWindow::handleMousePanEvent(QObject *watched, QEvent *event)
     return false;
 }
 
+bool MainWindow::handleWheelZoomEvent(QObject *watched, QWheelEvent *event)
+{
+    if (!hasImage() || !m_scrollArea
+        || (event->angleDelta().isNull() && event->pixelDelta().isNull())) {
+        return false;
+    }
+
+    const bool ctrlZoom = event->modifiers().testFlag(Qt::ControlModifier);
+    double steps = 0.0;
+    if (ctrlZoom && !event->pixelDelta().isNull()) {
+        const int delta = event->pixelDelta().y() != 0
+                              ? event->pixelDelta().y()
+                              : event->pixelDelta().x();
+        steps = -delta / 80.0;
+    } else if (event->angleDelta().y() != 0) {
+        steps = event->angleDelta().y() / static_cast<double>(QWheelEvent::DefaultDeltasPerStep);
+    } else if (event->pixelDelta().y() != 0) {
+        steps = event->pixelDelta().y() / 80.0;
+    } else if (ctrlZoom && event->angleDelta().x() != 0) {
+        steps = event->angleDelta().x() / static_cast<double>(QWheelEvent::DefaultDeltasPerStep);
+    }
+
+    if (qFuzzyIsNull(steps)) {
+        return false;
+    }
+
+    QPoint viewportPosition = m_scrollArea->viewport()->mapFromGlobal(event->globalPosition().toPoint());
+    if (!m_scrollArea->viewport()->rect().contains(viewportPosition)) {
+        viewportPosition = m_scrollArea->viewport()->rect().center();
+        if (auto *widget = qobject_cast<QWidget *>(watched)) {
+            viewportPosition = widget->mapTo(m_scrollArea->viewport(), event->position().toPoint());
+        }
+    }
+
+    zoomAt(std::pow(1.18, steps), viewportPosition);
+    event->accept();
+    return true;
+}
+
 void MainWindow::zoomBy(double factor)
 {
     if (!hasImage()) {
@@ -1725,8 +1732,11 @@ void MainWindow::showActualSize()
     }
     m_fitToWindow = false;
     m_scaleFactor = std::min(1.0, maximumManualScale());
-    m_pendingScrollAnchor = false;
-    updateImageView();
+    m_pendingScrollAnchor = true;
+    const QSize imageSize = transformedImageSize();
+    m_pendingAnchorImage = QPointF(imageSize.width() / 2.0, imageSize.height() / 2.0);
+    m_pendingAnchorViewport = m_scrollArea->viewport()->rect().center();
+    requestImageViewUpdate();
     updateToolbarState();
     updateZoomStatus();
 }

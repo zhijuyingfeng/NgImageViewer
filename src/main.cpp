@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QIcon>
 #include <QLocale>
 #include <QTranslator>
@@ -9,7 +10,11 @@
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
-    QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/resources/icons/app-icon.svg")));
+    const QIcon appIcon(QStringLiteral(":/icons/resources/icons/app-icon.svg"));
+    QApplication::setWindowIcon(appIcon);
+#ifdef Q_OS_LINUX
+    QGuiApplication::setDesktopFileName(QStringLiteral("ngimageviewer"));
+#endif
 
     QTranslator translator;
     const QStringList uiLanguages = QLocale::system().uiLanguages();
@@ -21,6 +26,7 @@ int main(int argc, char *argv[])
         }
     }
     MainWindow w;
+    w.setWindowIcon(appIcon);
     w.show();
 
     const QStringList args = QCoreApplication::arguments();
