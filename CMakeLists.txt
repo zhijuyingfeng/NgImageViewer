@@ -146,6 +146,7 @@ if(NGIMAGEVIEWER_ENABLE_HEIF)
     set(ENABLE_SHERLOCK265 OFF CACHE BOOL "Do not build bundled libde265 visual tool" FORCE)
     set(ENABLE_INTERNAL_DEVELOPMENT_TOOLS OFF CACHE BOOL "Do not build bundled libde265 development tools" FORCE)
     set(WITH_FUZZERS OFF CACHE BOOL "Do not build bundled libde265 fuzzers" FORCE)
+    set(FORCE_FULL_VISIBILITY ON CACHE BOOL "Do not reduce bundled libde265 symbol visibility" FORCE)
     add_subdirectory(
         "${NGIMAGEVIEWER_BUNDLED_LIBDE265_PATH}"
         "${CMAKE_CURRENT_BINARY_DIR}/third_party/libde265"

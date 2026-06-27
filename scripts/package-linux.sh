@@ -184,12 +184,43 @@ extract_appimagetool_from_linuxdeploy() {
     printf '%s\n' "$tool"
 }
 
+candidate_qt_lib_dirs() {
+    local candidates="${QT_PREFIX:-}:${CMAKE_PREFIX_PATH:-}"
+    local candidate
+    local -a candidate_array
+
+    candidates="${candidates//;/:}"
+    IFS=':' read -r -a candidate_array <<< "$candidates"
+    for candidate in "${candidate_array[@]}"; do
+        [[ -n "$candidate" && -d "$candidate/lib" ]] || continue
+        printf '%s\n' "$candidate/lib"
+    done
+}
+
+runtime_library_path() {
+    local path="$APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu"
+    local qt_lib_dir
+
+    while IFS= read -r qt_lib_dir; do
+        case ":$path:" in
+            *":$qt_lib_dir:"*) ;;
+            *) path="$path:$qt_lib_dir" ;;
+        esac
+    done < <(candidate_qt_lib_dirs)
+
+    if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+        path="$path:$LD_LIBRARY_PATH"
+    fi
+
+    printf '%s\n' "$path"
+}
+
 run_linuxdeploy() {
     local linuxdeploy_bin="$1"
     shift
 
     APPIMAGE_EXTRACT_AND_RUN="${APPIMAGE_EXTRACT_AND_RUN:-1}" \
-    LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    LD_LIBRARY_PATH="$(runtime_library_path)" \
         "$linuxdeploy_bin" "$@"
 }
 
@@ -293,12 +324,12 @@ build_appimage() {
 check_appdir_dependencies() {
     local missing
     info "Checking AppDir runtime dependencies"
-    missing="$(LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    missing="$(LD_LIBRARY_PATH="$(runtime_library_path)" \
         ldd "$APPDIR/usr/bin/NgImageViewer" | sed -n '/not found/p' || true)"
 
     if [[ -f "$APPDIR/usr/plugins/platforms/libqxcb.so" ]]; then
         missing+="$(
-            LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+            LD_LIBRARY_PATH="$(runtime_library_path)" \
                 ldd "$APPDIR/usr/plugins/platforms/libqxcb.so" | sed -n '/not found/p' || true
         )"
     fi
