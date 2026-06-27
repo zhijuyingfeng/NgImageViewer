@@ -230,10 +230,3 @@ if(UNIX AND NOT APPLE)
     install(FILES "${NGIMAGEVIEWER_LINUX_DESKTOP_FILE}"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
 endif()
-
-qt_generate_deploy_app_script(
-    TARGET NgImageViewer
-    OUTPUT_SCRIPT deploy_script
-    NO_UNSUPPORTED_PLATFORM_ERROR
-)
-install(SCRIPT ${deploy_script})
