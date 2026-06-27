@@ -176,7 +176,7 @@ jobs:
           python -m venv "$env:RUNNER_TEMP\aqt-venv"
           $AqtPython = "$env:RUNNER_TEMP\aqt-venv\Scripts\python.exe"
           & $AqtPython -m pip install --upgrade pip
-          & $AqtPython -m pip install aqtinstall
+          & $AqtPython -m pip install aqtinstall py7zr==1.1.0
           & $AqtPython -m aqt install-qt windows desktop "$QtVersion" win64_msvc2019_64 `
             -O "$env:RUNNER_TEMP\Qt" `
             -m qtimageformats
