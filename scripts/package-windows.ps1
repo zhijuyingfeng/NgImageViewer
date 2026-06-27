@@ -9,6 +9,7 @@ param(
     [switch]$IncludeOpenGLSoftwareRenderer,
     [switch]$IncludeSystemD3DCompiler,
     [switch]$IncludeQtTranslations,
+    [switch]$IncludeQtTlsPlugins,
     [switch]$NoZip
 )
 
@@ -350,6 +351,9 @@ if (-not $IncludeSystemD3DCompiler) {
 }
 if (-not $IncludeQtTranslations) {
     Remove-PathIfExists (Join-Path $PackageDir "bin\translations")
+}
+if (-not $IncludeQtTlsPlugins) {
+    Remove-PathIfExists (Join-Path $PackageDir "bin\tls")
 }
 
 $WindowsPlatformPlugin = Join-Path $PackageDir "bin\platforms\qwindows.dll"
