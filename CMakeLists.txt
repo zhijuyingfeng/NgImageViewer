@@ -55,8 +55,7 @@ set_target_properties(NgImageViewer PROPERTIES
     MACOSX_BUNDLE_ICON_FILE NgImageViewer.icns
 )
 
-qt_add_translations(
-    TARGETS NgImageViewer
+qt_add_translations(NgImageViewer
     TS_FILES NgImageViewer_zh_CN.ts
 )
 
