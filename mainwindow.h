@@ -72,6 +72,7 @@ private:
 
     void updateToolbarState();
     void updateImageView();
+    bool updateTiledImageView(const QImage &source, const QSize &targetSize, Qt::TransformationMode mode);
     void requestImageViewUpdate();
     void updateZoomStatus(bool restartHideTimer = true);
     void repositionZoomStatus();
@@ -168,6 +169,8 @@ private:
     QPixmap m_overviewPreviewCache;
     QSize m_overviewPreviewCacheSize;
     bool m_overviewPreviewDirty = true;
+    QSize m_lastTiledTargetSize;
+    Qt::TransformationMode m_lastTiledMode = Qt::SmoothTransformation;
     bool m_mousePanning = false;
     QPoint m_lastPanPosition;
 };

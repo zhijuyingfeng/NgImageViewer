@@ -1,10 +1,12 @@
 #ifndef IMAGEWIDGETS_H
 #define IMAGEWIDGETS_H
 
+#include <QImage>
 #include <QLabel>
 #include <QPointF>
 #include <QPixmap>
 #include <QRectF>
+#include <QSize>
 #include <QWidget>
 
 class QMouseEvent;
@@ -15,12 +17,23 @@ public:
     explicit ImageLabel(QWidget *parent = nullptr);
 
     void setShowTransparencyGrid(bool show);
+    void setDrawnPixmap(const QPixmap &pixmap, const QPoint &offset = {});
+    void clearDrawnPixmap();
+    void setTiledImage(const QImage &image, const QSize &targetSize, Qt::TransformationMode mode);
+    bool hasTiledImage(const QImage &image, const QSize &targetSize, Qt::TransformationMode mode) const;
 
 protected:
     void paintEvent(QPaintEvent *event) override;
 
 private:
+    void paintCheckerboard(QPainter *painter, const QRect &area);
+
     bool m_showTransparencyGrid = false;
+    QPixmap m_drawnPixmap;
+    QPoint m_drawnPixmapOffset;
+    QImage m_tiledImage;
+    QSize m_tiledTargetSize;
+    Qt::TransformationMode m_tiledMode = Qt::SmoothTransformation;
 };
 
 class ImageOverview : public QWidget

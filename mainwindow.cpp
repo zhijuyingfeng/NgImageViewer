@@ -524,10 +524,12 @@ QWidget *MainWindow::createImagePage()
     m_overviewIndicator->raise();
     connect(m_overviewIndicator, &ImageOverview::viewportCenterChanged,
             this, &MainWindow::moveViewportFromOverview);
-    connect(m_scrollArea->horizontalScrollBar(), &QScrollBar::valueChanged,
-            this, &MainWindow::updateOverviewIndicator);
-    connect(m_scrollArea->verticalScrollBar(), &QScrollBar::valueChanged,
-            this, &MainWindow::updateOverviewIndicator);
+    connect(m_scrollArea->horizontalScrollBar(), &QScrollBar::valueChanged, this, [this] {
+        updateOverviewIndicator();
+    });
+    connect(m_scrollArea->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] {
+        updateOverviewIndicator();
+    });
 
     return page;
 }
@@ -900,6 +902,7 @@ void MainWindow::clearCurrentImage()
     m_currentIndex = -1;
     m_svgDefaultSize = QSize();
     if (m_imageLabel) {
+        m_imageLabel->clearDrawnPixmap();
         m_imageLabel->clear();
         m_imageLabel->setShowTransparencyGrid(false);
         m_imageLabel->resize(0, 0);
@@ -1024,6 +1027,8 @@ void MainWindow::updateImageView()
             display = rendered.transformed(transform, Qt::SmoothTransformation);
         }
 
+        m_lastTiledTargetSize = QSize();
+        m_imageLabel->clearDrawnPixmap();
         m_imageLabel->setPixmap(QPixmap::fromImage(display));
         m_imageLabel->setShowTransparencyGrid(true);
         m_imageLabel->resize(display.size());
@@ -1042,9 +1047,12 @@ void MainWindow::updateImageView()
         return;
     }
 
-    QTransform transform;
-    transform.rotate(m_rotation);
-    const QImage display = source.transformed(transform, Qt::SmoothTransformation);
+    QImage display = source;
+    if (m_rotation != 0) {
+        QTransform transform;
+        transform.rotate(m_rotation);
+        display = source.transformed(transform, Qt::SmoothTransformation);
+    }
 
     QSize targetSize = display.size();
     if (m_fitToWindow) {
@@ -1062,17 +1070,65 @@ void MainWindow::updateImageView()
     }
 
     const Qt::TransformationMode transformationMode = m_pendingScrollAnchor
+                                                          || (m_qualityRenderTimer
+                                                              && m_qualityRenderTimer->isActive())
                                                           ? Qt::FastTransformation
                                                           : Qt::SmoothTransformation;
+    if (updateTiledImageView(display, targetSize, transformationMode)) {
+        updateOverviewIndicator();
+        updateZoomStatus(false);
+        return;
+    }
+
+    m_lastTiledTargetSize = QSize();
     const QPixmap pixmap = QPixmap::fromImage(display).scaled(
         targetSize,
         Qt::KeepAspectRatio,
         transformationMode);
+    m_imageLabel->clearDrawnPixmap();
     m_imageLabel->setPixmap(pixmap);
     m_imageLabel->setShowTransparencyGrid(display.hasAlphaChannel());
     m_imageLabel->resize(pixmap.size());
     updateOverviewIndicator();
     updateZoomStatus(false);
+}
+
+bool MainWindow::updateTiledImageView(const QImage &source, const QSize &targetSize, Qt::TransformationMode mode)
+{
+    if (source.isNull() || targetSize.isEmpty() || m_fitToWindow || m_isGif || m_isSvg || !m_scrollArea) {
+        return false;
+    }
+
+    const QSize viewportSize = m_scrollArea->viewport()->size();
+    if (viewportSize.isEmpty()) {
+        return false;
+    }
+
+    constexpr qint64 fullRenderPixelLimit = 18000000;
+    const qint64 targetPixels = static_cast<qint64>(targetSize.width()) * targetSize.height();
+    if (targetPixels <= fullRenderPixelLimit) {
+        return false;
+    }
+
+    const double scaleX = targetSize.width() / static_cast<double>(source.width());
+    const double scaleY = targetSize.height() / static_cast<double>(source.height());
+    if (qFuzzyIsNull(scaleX) || qFuzzyIsNull(scaleY)) {
+        return false;
+    }
+
+    const bool sameTiledState = m_lastTiledTargetSize == targetSize
+                                && m_lastTiledMode == mode
+                                && m_imageLabel->hasTiledImage(source, targetSize, mode);
+    m_imageLabel->setShowTransparencyGrid(source.hasAlphaChannel());
+    if (m_imageLabel->size() != targetSize) {
+        m_imageLabel->resize(targetSize);
+    }
+    if (!sameTiledState) {
+        m_imageLabel->setTiledImage(source, targetSize, mode);
+        m_lastTiledTargetSize = targetSize;
+        m_lastTiledMode = mode;
+    }
+    return true;
 }
 
 void MainWindow::requestImageViewUpdate()
@@ -1139,6 +1195,7 @@ void MainWindow::invalidateOverviewPreview()
     m_overviewPreviewCache = QPixmap();
     m_overviewPreviewCacheSize = QSize();
     m_overviewPreviewDirty = true;
+    m_lastTiledTargetSize = QSize();
 }
 
 void MainWindow::updateOverviewIndicator()
@@ -1274,9 +1331,12 @@ QPixmap MainWindow::createOverviewPixmap(const QSize &targetSize)
         return {};
     }
 
-    QTransform transform;
-    transform.rotate(m_rotation);
-    const QImage display = source.transformed(transform, Qt::SmoothTransformation);
+    QImage display = source;
+    if (m_rotation != 0) {
+        QTransform transform;
+        transform.rotate(m_rotation);
+        display = source.transformed(transform, Qt::SmoothTransformation);
+    }
     m_overviewPreviewCache = QPixmap::fromImage(display).scaled(
         previewSize,
         Qt::KeepAspectRatio,
@@ -1334,14 +1394,23 @@ double MainWindow::maximumManualScale() const
         return std::max(1.0, fitScale);
     }
 
-    constexpr double kMaxRenderedPixels = 48000000.0;
-    constexpr double kMaxRenderedSide = 12000.0;
     const double sourcePixels = imageSize.width() * static_cast<double>(imageSize.height());
-    const double pixelLimit = std::sqrt(kMaxRenderedPixels / sourcePixels);
-    const double sideLimit = kMaxRenderedSide / std::max(imageSize.width(), imageSize.height());
-    const double budgetLimit = std::min(pixelLimit, sideLimit);
-    const double requestedLimit = std::max(20.0, fitScale * 4.0);
-    return std::max(fitScale, std::min(requestedLimit, budgetLimit));
+    const double longestSide = std::max(imageSize.width(), imageSize.height());
+    if (m_isGif) {
+        constexpr double kMaxGifRenderedPixels = 48000000.0;
+        constexpr double kMaxGifRenderedSide = 12000.0;
+        const double pixelLimit = std::sqrt(kMaxGifRenderedPixels / sourcePixels);
+        const double sideLimit = kMaxGifRenderedSide / longestSide;
+        const double budgetLimit = std::min(pixelLimit, sideLimit);
+        const double requestedLimit = std::max(20.0, fitScale * 4.0);
+        return std::max(fitScale, std::min(requestedLimit, budgetLimit));
+    }
+
+    constexpr double kMaxBitmapScale = 32.0;
+    constexpr double kMaxBitmapRenderedSide = 131072.0;
+    const double sideLimit = kMaxBitmapRenderedSide / longestSide;
+    const double requestedLimit = std::max(kMaxBitmapScale, fitScale * 8.0);
+    return std::max(fitScale, std::min(requestedLimit, sideLimit));
 }
 
 bool MainWindow::isZoomedBeyondFit() const
@@ -1539,10 +1608,15 @@ void MainWindow::zoomAt(double factor, const QPoint &viewportPosition)
     if (m_pendingScrollAnchor && !m_fitToWindow) {
         labelPosition = QPointF(m_pendingAnchorViewport) - m_pendingAnchorImage * oldScale;
     }
+    const double newScale = std::clamp(oldScale * factor, 0.05, maximumManualScale());
+    if (qFuzzyCompare(newScale, oldScale)) {
+        return;
+    }
+
     const QPointF imageAnchor = (QPointF(viewportPosition) - labelPosition) / oldScale;
 
     m_fitToWindow = false;
-    m_scaleFactor = std::clamp(oldScale * factor, 0.05, maximumManualScale());
+    m_scaleFactor = newScale;
     m_pendingScrollAnchor = true;
     m_pendingAnchorImage = imageAnchor;
     m_pendingAnchorViewport = viewportPosition;

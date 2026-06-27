@@ -2,6 +2,7 @@
 
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPaintEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -20,22 +21,109 @@ void ImageLabel::setShowTransparencyGrid(bool show)
     update();
 }
 
-void ImageLabel::paintEvent(QPaintEvent *event)
+void ImageLabel::setDrawnPixmap(const QPixmap &pixmap, const QPoint &offset)
 {
-    const QPixmap currentPixmap = pixmap();
-    if (m_showTransparencyGrid && !currentPixmap.isNull()) {
-        QPainter painter(this);
-        const int cell = 12;
-        for (int y = 0; y < height(); y += cell) {
-            for (int x = 0; x < width(); x += cell) {
-                const bool alternate = ((x / cell) + (y / cell)) % 2 == 0;
-                painter.fillRect(QRect(x, y, cell, cell),
-                                 alternate ? QColor("#f8fafc") : QColor("#dbe3ec"));
-            }
-        }
+    m_tiledImage = QImage();
+    m_tiledTargetSize = QSize();
+    m_drawnPixmap = pixmap;
+    m_drawnPixmapOffset = offset;
+    update();
+}
+
+void ImageLabel::clearDrawnPixmap()
+{
+    if (m_drawnPixmap.isNull() && m_tiledImage.isNull()) {
+        return;
+    }
+    m_drawnPixmap = QPixmap();
+    m_drawnPixmapOffset = {};
+    m_tiledImage = QImage();
+    m_tiledTargetSize = QSize();
+    update();
+}
+
+void ImageLabel::setTiledImage(const QImage &image, const QSize &targetSize, Qt::TransformationMode mode)
+{
+    if (hasTiledImage(image, targetSize, mode)) {
+        return;
     }
 
-    QLabel::paintEvent(event);
+    m_drawnPixmap = QPixmap();
+    m_drawnPixmapOffset = {};
+    m_tiledImage = image;
+    m_tiledTargetSize = targetSize;
+    m_tiledMode = mode;
+    update();
+}
+
+bool ImageLabel::hasTiledImage(const QImage &image, const QSize &targetSize, Qt::TransformationMode mode) const
+{
+    return !m_tiledImage.isNull()
+           && m_tiledImage.constBits() == image.constBits()
+           && m_tiledTargetSize == targetSize
+           && m_tiledMode == mode;
+}
+
+void ImageLabel::paintEvent(QPaintEvent *event)
+{
+    if (!m_tiledImage.isNull() && !m_tiledTargetSize.isEmpty()) {
+        QPainter painter(this);
+        const QRect dirty = event->rect();
+        if (m_showTransparencyGrid) {
+            paintCheckerboard(&painter, dirty);
+        } else {
+            painter.fillRect(dirty, palette().color(QPalette::Base));
+        }
+
+        const QRect targetRect = dirty.intersected(QRect(QPoint(0, 0), m_tiledTargetSize));
+        if (targetRect.isEmpty()) {
+            return;
+        }
+
+        const double scaleX = m_tiledTargetSize.width() / static_cast<double>(m_tiledImage.width());
+        const double scaleY = m_tiledTargetSize.height() / static_cast<double>(m_tiledImage.height());
+        if (qFuzzyIsNull(scaleX) || qFuzzyIsNull(scaleY)) {
+            return;
+        }
+
+        const QRectF sourceRect(
+            targetRect.left() / scaleX,
+            targetRect.top() / scaleY,
+            targetRect.width() / scaleX,
+            targetRect.height() / scaleY);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, m_tiledMode == Qt::SmoothTransformation);
+        painter.drawImage(QRectF(targetRect), m_tiledImage, sourceRect);
+        return;
+    }
+
+    const QPixmap currentPixmap = m_drawnPixmap.isNull() ? pixmap() : m_drawnPixmap;
+    if (m_showTransparencyGrid && !currentPixmap.isNull()) {
+        QPainter painter(this);
+        paintCheckerboard(&painter, event->rect());
+    }
+
+    if (m_drawnPixmap.isNull()) {
+        QLabel::paintEvent(event);
+        return;
+    }
+
+    QPainter painter(this);
+    painter.fillRect(event->rect(), palette().color(QPalette::Base));
+    painter.drawPixmap(m_drawnPixmapOffset, m_drawnPixmap);
+}
+
+void ImageLabel::paintCheckerboard(QPainter *painter, const QRect &area)
+{
+    const int cell = 12;
+    const int startX = (area.left() / cell) * cell;
+    const int startY = (area.top() / cell) * cell;
+    for (int y = startY; y <= area.bottom(); y += cell) {
+        for (int x = startX; x <= area.right(); x += cell) {
+            const bool alternate = ((x / cell) + (y / cell)) % 2 == 0;
+            painter->fillRect(QRect(x, y, cell, cell),
+                              alternate ? QColor("#f8fafc") : QColor("#dbe3ec"));
+        }
+    }
 }
 
 ImageOverview::ImageOverview(QWidget *parent)
