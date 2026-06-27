@@ -200,6 +200,7 @@ if(NGIMAGEVIEWER_ENABLE_HEIF)
         "${CMAKE_CURRENT_BINARY_DIR}/third_party/libheif"
         EXCLUDE_FROM_ALL)
     if(TARGET heif)
+        target_compile_definitions(heif PRIVATE LIBDE265_STATIC_BUILD)
         target_include_directories(heif PRIVATE
             "${CMAKE_CURRENT_BINARY_DIR}/third_party/libde265")
         set(NGIMAGEVIEWER_HAS_LIBHEIF ON)
