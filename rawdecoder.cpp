@@ -6,6 +6,8 @@
 #include <QIODevice>
 #include <QObject>
 
+#include <limits>
+
 #if NGIMAGEVIEWER_HAS_LIBRAW
 #include <libraw/libraw.h>
 #endif
@@ -81,6 +83,25 @@ QImage bitmapImage(const libraw_processed_image_t *processed)
     return {};
 }
 
+QImage decodeJpegData(const char *data, qsizetype size)
+{
+    if (!data || size <= 0 || size > std::numeric_limits<int>::max()) {
+        return {};
+    }
+
+    QByteArray jpegData = QByteArray::fromRawData(data, size);
+    QBuffer buffer(&jpegData);
+    buffer.open(QIODevice::ReadOnly);
+
+    QImageReader reader(&buffer, "jpg");
+    reader.setAutoTransform(true);
+    QImage image = reader.read();
+    if (!image.isNull()) {
+        return image;
+    }
+    return QImage::fromData(jpegData, "JPG");
+}
+
 QImage processedImage(const libraw_processed_image_t *processed)
 {
     if (!processed) {
@@ -88,39 +109,57 @@ QImage processedImage(const libraw_processed_image_t *processed)
     }
 
     if (processed->type == LIBRAW_IMAGE_JPEG) {
-        QByteArray jpegData(
+        return decodeJpegData(
             reinterpret_cast<const char *>(processed->data),
-            static_cast<int>(processed->data_size));
-        QBuffer buffer(&jpegData);
-        buffer.open(QIODevice::ReadOnly);
-
-        QImageReader reader(&buffer, "jpg");
-        reader.setAutoTransform(true);
-        QImage image = reader.read();
-        if (!image.isNull()) {
-            return image;
-        }
-        return QImage::fromData(jpegData, "JPG");
+            static_cast<qsizetype>(processed->data_size));
     }
 
     return bitmapImage(processed);
 }
 
-bool isLargeEnoughPreview(const QSize &previewSize, const QSize &rawSize)
+RawDecoder::DecodeResult decodeScannedJpegPreview(const QByteArray &rawData)
 {
-    if (previewSize.isEmpty()) {
-        return false;
-    }
-    if (rawSize.isEmpty()) {
-        return previewSize.width() >= 2560 && previewSize.height() >= 1440;
+    RawDecoder::DecodeResult result;
+    result.decoderInfo = decoderInfo();
+
+    static const QByteArray soi("\xff\xd8\xff", 3);
+    static const QByteArray eoi("\xff\xd9", 2);
+    constexpr int maxCandidates = 64;
+
+    QImage bestImage;
+    qsizetype bestArea = 0;
+    int candidates = 0;
+    qsizetype start = rawData.indexOf(soi);
+    while (start >= 0 && candidates < maxCandidates) {
+        const qsizetype end = rawData.indexOf(eoi, start + soi.size());
+        if (end < 0) {
+            break;
+        }
+
+        const qsizetype jpegSize = end + eoi.size() - start;
+        const QImage image = decodeJpegData(rawData.constData() + start, jpegSize);
+        if (!image.isNull()) {
+            const qsizetype area = static_cast<qsizetype>(image.width()) * image.height();
+            if (area > bestArea) {
+                bestImage = image;
+                bestArea = area;
+            }
+        }
+
+        ++candidates;
+        start = rawData.indexOf(soi, end + eoi.size());
     }
 
-    constexpr double minDimensionRatio = 0.7;
-    const bool sameOrientation = previewSize.width() >= rawSize.width() * minDimensionRatio
-                                 && previewSize.height() >= rawSize.height() * minDimensionRatio;
-    const bool rotatedOrientation = previewSize.width() >= rawSize.height() * minDimensionRatio
-                                    && previewSize.height() >= rawSize.width() * minDimensionRatio;
-    return sameOrientation || rotatedOrientation;
+    if (!bestImage.isNull()) {
+        result.image = bestImage;
+        result.usedEmbeddedPreview = true;
+        result.displaySource = QObject::tr("内嵌 JPEG 预览");
+        result.embeddedPreviewSize = bestImage.size();
+    } else {
+        result.errorMessage = QObject::tr("RAW 内嵌 JPEG 预览扫描失败。");
+    }
+
+    return result;
 }
 
 RawDecoder::DecodeResult decodeEmbeddedPreview(const QByteArray &rawData)
@@ -224,17 +263,6 @@ RawDecoder::DecodeResult decodeFullRaw(const QByteArray &rawData)
     return result;
 }
 
-RawDecoder::DecodeResult mergePreviewFallback(
-    const RawDecoder::DecodeResult &preview,
-    const RawDecoder::DecodeResult &full)
-{
-    RawDecoder::DecodeResult result = preview;
-    result.fullDecodeAttempted = true;
-    result.warningMessage = QObject::tr("完整 RAW 解码失败，已显示内嵌预览图：%1")
-                                .arg(full.errorMessage);
-    return result;
-}
-
 #endif
 
 } // namespace
@@ -269,20 +297,20 @@ DecodeResult decode(const QString &filePath)
     }
 
     DecodeResult preview = decodeEmbeddedPreview(rawData);
-    if (!preview.image.isNull() && isLargeEnoughPreview(preview.image.size(), preview.rawSize)) {
+    if (!preview.image.isNull()) {
         return preview;
+    }
+
+    DecodeResult scannedPreview = decodeScannedJpegPreview(rawData);
+    if (!scannedPreview.image.isNull()) {
+        scannedPreview.cameraInfo = preview.cameraInfo;
+        scannedPreview.rawSize = preview.rawSize;
+        return scannedPreview;
     }
 
     DecodeResult full = decodeFullRaw(rawData);
     if (!full.image.isNull()) {
-        if (!preview.image.isNull()) {
-            full.embeddedPreviewSize = preview.embeddedPreviewSize;
-        }
         return full;
-    }
-
-    if (!preview.image.isNull()) {
-        return mergePreviewFallback(preview, full);
     }
 
     DecodeResult error;
@@ -290,9 +318,10 @@ DecodeResult decode(const QString &filePath)
     error.cameraInfo = full.cameraInfo;
     error.rawSize = full.rawSize;
     error.fullDecodeAttempted = true;
-    error.errorMessage = preview.errorMessage.isEmpty()
-                             ? full.errorMessage
-                             : QObject::tr("%1\n%2").arg(full.errorMessage, preview.errorMessage);
+    error.errorMessage = QObject::tr("%1\n%2\n%3")
+                             .arg(full.errorMessage,
+                                  preview.errorMessage,
+                                  scannedPreview.errorMessage);
     return error;
 #else
     Q_UNUSED(filePath);

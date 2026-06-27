@@ -52,42 +52,42 @@ target_link_libraries(NgImageViewer
 
 set(NGIMAGEVIEWER_HAS_LIBRAW OFF)
 if(NGIMAGEVIEWER_ENABLE_RAW)
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(LIBRAW QUIET IMPORTED_TARGET libraw)
+    set(NGIMAGEVIEWER_BUNDLED_LIBRAW_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/LibRaw")
+    set(NGIMAGEVIEWER_BUNDLED_LIBRAW_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/LibRaw-cmake")
+
+    if(NOT EXISTS "${NGIMAGEVIEWER_BUNDLED_LIBRAW_PATH}/libraw/libraw.h"
+            OR NOT EXISTS "${NGIMAGEVIEWER_BUNDLED_LIBRAW_CMAKE_PATH}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "RAW support requires bundled LibRaw submodules. Run:\n"
+            "  git submodule update --init --recursive\n"
+            "System LibRaw is intentionally not used because distribution versions are not reliable enough.")
     endif()
 
-    if(NOT TARGET PkgConfig::LIBRAW)
-        find_package(libraw CONFIG QUIET)
-        find_package(LibRaw CONFIG QUIET)
-    endif()
-
-    foreach(candidate
-            PkgConfig::LIBRAW
-            libraw::raw
-            libraw::libraw
-            LibRaw::raw
-            LibRaw::LibRaw
-            unofficial::libraw::libraw)
-        if(NOT NGIMAGEVIEWER_HAS_LIBRAW AND TARGET ${candidate})
-            set(NGIMAGEVIEWER_LIBRAW_TARGET ${candidate})
-            set(NGIMAGEVIEWER_HAS_LIBRAW ON)
+    set(LIBRAW_PATH "${NGIMAGEVIEWER_BUNDLED_LIBRAW_PATH}" CACHE PATH "Bundled LibRaw source path" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build bundled LibRaw as a static library" FORCE)
+    set(ENABLE_EXAMPLES OFF CACHE BOOL "Do not build bundled LibRaw examples" FORCE)
+    set(ENABLE_OPENMP OFF CACHE BOOL "Do not build bundled LibRaw with OpenMP" FORCE)
+    set(ENABLE_JASPER OFF CACHE BOOL "Do not build bundled LibRaw with Jasper" FORCE)
+    set(ENABLE_RAWSPEED OFF CACHE BOOL "Do not build bundled LibRaw with RawSpeed" FORCE)
+    set(LIBRAW_INSTALL OFF CACHE BOOL "Do not install bundled LibRaw targets" FORCE)
+    add_subdirectory(
+        "${NGIMAGEVIEWER_BUNDLED_LIBRAW_CMAKE_PATH}"
+        "${CMAKE_CURRENT_BINARY_DIR}/third_party/LibRaw-cmake"
+        EXCLUDE_FROM_ALL)
+    foreach(libraw_target raw raw_r)
+        if(TARGET ${libraw_target})
+            if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+                target_compile_options(${libraw_target} PRIVATE
+                    -Wno-deprecated-declarations
+                    -Wno-macro-redefined)
+            elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+                target_compile_options(${libraw_target} PRIVATE
+                    -Wno-deprecated-declarations)
+            endif()
         endif()
     endforeach()
-
-    if(NOT NGIMAGEVIEWER_HAS_LIBRAW)
-        find_path(LIBRAW_INCLUDE_DIR NAMES libraw/libraw.h)
-        find_library(LIBRAW_LIBRARY NAMES raw raw_r libraw LibRaw)
-        if(LIBRAW_INCLUDE_DIR AND LIBRAW_LIBRARY)
-            add_library(NgImageViewerLibRaw UNKNOWN IMPORTED)
-            set_target_properties(NgImageViewerLibRaw PROPERTIES
-                IMPORTED_LOCATION "${LIBRAW_LIBRARY}"
-                INTERFACE_INCLUDE_DIRECTORIES "${LIBRAW_INCLUDE_DIR}"
-            )
-            set(NGIMAGEVIEWER_LIBRAW_TARGET NgImageViewerLibRaw)
-            set(NGIMAGEVIEWER_HAS_LIBRAW ON)
-        endif()
-    endif()
+    set(NGIMAGEVIEWER_LIBRAW_TARGET libraw::libraw)
+    set(NGIMAGEVIEWER_HAS_LIBRAW ON)
 endif()
 
 if(NGIMAGEVIEWER_HAS_LIBRAW)

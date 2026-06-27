@@ -1,14 +1,14 @@
 # RAW Support
 
-NgImageViewer supports RAW images through LibRaw when the dependency is available at configure time.
-The project still builds without LibRaw; in that case RAW extensions appear in the file picker, but opening
-a RAW file shows an explicit "RAW support is not enabled" message.
+NgImageViewer supports RAW images through the bundled LibRaw submodules when RAW support is enabled.
+System LibRaw is intentionally not used because distribution versions differ and may not support the same
+camera models.
 
 RAW files are opened with a preview-first strategy. The app first tries to display the embedded JPEG/preview
-stored inside the RAW file. If the embedded preview is missing or too small, it falls back to full LibRaw
-processing. If full processing fails but an embedded preview was available, the app still shows that preview.
-This is intentional for image browsing: embedded previews are usually faster, closer to the camera's own
-rendering, and more compatible with new camera models on older LibRaw builds.
+stored inside the RAW file and uses it immediately when available. If LibRaw cannot extract the preview, the
+app scans the RAW container for embedded JPEG data before falling back to full LibRaw processing. This is
+intentional for image browsing: embedded previews are usually faster, closer to the camera's own rendering,
+and more compatible with new camera models.
 
 ## Supported Extensions
 
@@ -19,15 +19,24 @@ The RAW file picker and directory navigation include:
 
 ## Local Debug
 
-### macOS
+### Bundled LibRaw Submodules
 
-Install LibRaw with Homebrew:
+NgImageViewer requires the bundled LibRaw submodules when `NGIMAGEVIEWER_ENABLE_RAW=ON`:
 
 ```bash
-brew install libraw
+git submodule update --init --recursive
 ```
 
-Then delete or reconfigure the CMake build directory so CMake can discover the new package:
+The bundled version is currently pinned to LibRaw `0.22.1` with the community CMake wrapper from
+`LibRaw-cmake`. CMake builds it as a static library by default, disables LibRaw examples and OpenMP, and links
+the app against `libraw::libraw`. This keeps Linux builds independent from old distribution packages such as
+Debian's `libraw-dev 0.20.x`.
+
+If the submodules are missing, CMake fails immediately instead of falling back to a local or system LibRaw.
+
+### macOS
+
+Initialize submodules, then delete or reconfigure the CMake build directory:
 
 ```bash
 /Users/nigao/Qt/Tools/CMake/CMake.app/Contents/bin/cmake \
@@ -41,32 +50,11 @@ The configure output should include:
 RAW support: enabled with ...
 ```
 
-### Windows with vcpkg
+### Windows
 
-Install LibRaw with the same architecture and compiler family as the Qt kit:
-
-```bat
-vcpkg install libraw:x64-windows
-```
-
-Configure CMake with the vcpkg toolchain:
-
-```bat
--DCMAKE_TOOLCHAIN_FILE=C:/dev/vcpkg/scripts/buildsystems/vcpkg.cmake
--DVCPKG_TARGET_TRIPLET=x64-windows
-```
-
-If Qt Creator has already configured the build directory, clear the CMake cache or create a new build
-directory after adding the toolchain file.
-
-### Windows with Manual LibRaw
-
-If LibRaw is installed manually, pass the include and library locations to CMake:
-
-```bat
--DLIBRAW_INCLUDE_DIR=C:/dev/libraw/include
--DLIBRAW_LIBRARY=C:/dev/libraw/lib/raw.lib
-```
+Use the same submodule flow as macOS/Linux. `LibRaw-cmake` defines the `libraw::libraw` CMake target and can
+build the bundled LibRaw sources with MSVC or MinGW. The project does not link against vcpkg or manually
+installed LibRaw.
 
 ## Release Packaging
 
@@ -75,6 +63,9 @@ If LibRaw is installed manually, pass the include and library locations to CMake
 The app links to LibRaw when enabled. For a redistributable `.app`, make sure the LibRaw dynamic library
 and its dependent codec libraries are bundled and their install names are valid for the app bundle.
 Run `otool -L` on the executable to inspect unresolved dynamic library paths.
+
+LibRaw itself is linked statically into the app executable. Its dynamic codec dependencies, such as `lcms2`,
+`jpeg`, or `zlib` when present, still need to be handled by the packaging step.
 
 The default packaging script only handles the Release app and refuses Debug builds:
 
@@ -95,19 +86,17 @@ with the same lower `CMAKE_OSX_DEPLOYMENT_TARGET`, then reconfigure this project
 
 ### Windows
 
-Run `windeployqt` for Qt dependencies, then copy LibRaw runtime DLLs next to `NgImageViewer.exe`.
-The exact DLL list depends on how LibRaw was built, but commonly includes:
+Run `windeployqt` for Qt dependencies. LibRaw itself is static, so there is no `raw.dll` to copy. If CMake
+found dynamic codec dependencies while building LibRaw, copy those DLLs next to `NgImageViewer.exe`. The exact
+DLL list depends on the Windows kit and dependency setup, but commonly includes:
 
 ```text
-raw.dll / libraw.dll
 libjpeg*.dll
-jasper*.dll
 lcms2.dll
 zlib*.dll
 ```
 
-If LibRaw was built with extra codec backends, copy those runtime DLLs as well. Use a dependency scanner
-or run the app from a clean machine/VM to verify no DLL is missing.
+Use a dependency scanner or run the app from a clean machine/VM to verify no DLL is missing.
 
 ## CMake Behavior
 
@@ -117,10 +106,9 @@ RAW is controlled by:
 NGIMAGEVIEWER_ENABLE_RAW=ON
 ```
 
-When enabled, CMake tries these discovery paths:
+When enabled, CMake only uses bundled `third_party/LibRaw` + `third_party/LibRaw-cmake`. If those submodules
+are not initialized, configuration fails with an explicit error. To build without RAW support, configure with:
 
-1. `pkg-config` package `libraw`
-2. CMake config packages named `libraw` or `LibRaw`
-3. Manual `LIBRAW_INCLUDE_DIR` and `LIBRAW_LIBRARY`
-
-If none are found, the build continues with `NGIMAGEVIEWER_HAS_LIBRAW=0`.
+```bash
+cmake -S . -B build/no-raw -DNGIMAGEVIEWER_ENABLE_RAW=OFF
+```
