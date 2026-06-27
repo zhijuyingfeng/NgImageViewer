@@ -129,6 +129,16 @@ cmake -S . -B build \
 
 Install Qt 6 for the same compiler you plan to use, such as MSVC or MinGW. Keep Qt, CMake, and the compiler toolchain consistent.
 
+To create a redistributable Windows zip package, run from a Developer PowerShell:
+
+```powershell
+git submodule update --init --recursive
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1 `
+  -QtPrefix C:\Qt\6.x.x\msvc2022_64
+```
+
+The script builds Release, installs the app into `dist\windows\NgImageViewer`, runs `windeployqt` from the same Qt kit, and writes `dist\windows\NgImageViewer-windows-x64.zip` by default. Pass `-NoZip` to keep only the package directory.
+
 Example with MSVC from a Developer PowerShell:
 
 ```powershell

@@ -129,6 +129,16 @@ cmake -S . -B build \
 
 安装与你要使用的编译器匹配的 Qt 6，例如 MSVC 或 MinGW。Qt、CMake 和编译器工具链需要保持一致。
 
+生成可分发的 Windows zip 包，建议在 Developer PowerShell 中执行：
+
+```powershell
+git submodule update --init --recursive
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1 `
+  -QtPrefix C:\Qt\6.x.x\msvc2022_64
+```
+
+脚本会构建 Release，将文件安装到 `dist\windows\NgImageViewer`，通过同一个 Qt kit 的 `windeployqt` 收集运行依赖，并默认输出 `dist\windows\NgImageViewer-windows-x64.zip`。如果只需要目录、不生成 zip，可以加 `-NoZip`。
+
 MSVC 示例，建议在 Developer PowerShell 中执行：
 
 ```powershell
