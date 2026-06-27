@@ -78,7 +78,7 @@ Install Qt 6 development packages and build tools. On Debian/Ubuntu, package nam
 
 ```bash
 sudo apt update
-sudo apt install build-essential cmake ninja-build pkg-config qt6-base-dev qt6-svg-dev qt6-tools-dev
+sudo apt install build-essential cmake ninja-build pkg-config qt6-base-dev qt6-svg-dev qt6-tools-dev libgl-dev libopengl-dev libegl-dev libglx-dev
 ```
 
 Then configure and build:
@@ -88,6 +88,26 @@ git submodule update --init --recursive
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
+
+To package a redistributable AppDir/AppImage without installing to the system, install `linuxdeploy` and `linuxdeploy-plugin-qt`, then run:
+
+```bash
+scripts/package-linux.sh
+```
+
+The script builds Release, stages the app into `dist/linux/NgImageViewer.AppDir`, runs `linuxdeploy` with the Qt plugin, checks the staged binary and Qt `xcb` platform plugin for missing libraries, and writes `dist/linux/NgImageViewer-x86_64.AppImage` by default. It does not install files to your system.
+
+If the tools are not on `PATH`, pass them explicitly:
+
+```bash
+LINUXDEPLOY=/path/to/linuxdeploy-x86_64.AppImage \
+LINUXDEPLOY_PLUGIN_QT=/path/to/linuxdeploy-plugin-qt-x86_64.AppImage \
+scripts/package-linux.sh
+```
+
+The script also looks for `linuxdeploy-x86_64.AppImage`, `linuxdeploy-plugin-qt-x86_64.AppImage`, and AppImage `runtime-x86_64` in `tools/` and `~/Downloads`. If the build machine cannot run AppImages through FUSE, it uses extract-and-run mode. If `linuxdeploy` cannot download the AppImage runtime automatically, place `runtime-x86_64` in `tools/` or `~/Downloads`, or set `APPIMAGE_RUNTIME=/path/to/runtime-x86_64`.
+
+Set `NGIMAGEVIEWER_LINUX_APPIMAGE=0` to generate only the AppDir. `LibRaw`, `libheif`, and `libde265` are built from bundled submodules and linked statically by default; Qt and its plugins are collected into the AppDir/AppImage.
 
 To install the binary, desktop file, and hicolor icon:
 
