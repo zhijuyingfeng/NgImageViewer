@@ -139,6 +139,17 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1 `
 
 脚本会构建 Release，将文件安装到 `dist\windows\NgImageViewer`，通过同一个 Qt kit 的 `windeployqt` 收集运行依赖，并默认输出 `dist\windows\NgImageViewer-windows-x64.zip`。如果只需要目录、不生成 zip，可以加 `-NoZip`。
 
+Windows 包默认会做体积优化：复制必要的 MSVC runtime DLL，而不是打入完整的 `vc_redist.x64.exe` 安装器；同时跳过 Qt 软件 OpenGL fallback、系统 D3D compiler 和全量 Qt 翻译文件。如果需要更偏兼容性的较大包，可以按需加这些开关：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1 `
+  -QtPrefix C:\Qt\6.x.x\msvc2022_64 `
+  -IncludeCompilerRuntimeInstaller `
+  -IncludeOpenGLSoftwareRenderer `
+  -IncludeSystemD3DCompiler `
+  -IncludeQtTranslations
+```
+
 MSVC 示例，建议在 Developer PowerShell 中执行：
 
 ```powershell

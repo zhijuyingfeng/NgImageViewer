@@ -139,6 +139,17 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1 `
 
 The script builds Release, installs the app into `dist\windows\NgImageViewer`, runs `windeployqt` from the same Qt kit, and writes `dist\windows\NgImageViewer-windows-x64.zip` by default. Pass `-NoZip` to keep only the package directory.
 
+By default the Windows package is size-optimized: it copies the required MSVC runtime DLLs instead of bundling the full `vc_redist.x64.exe` installer, and it skips Qt's software OpenGL fallback, system D3D compiler, and full Qt translation bundle. For a larger compatibility-first package, pass any of:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1 `
+  -QtPrefix C:\Qt\6.x.x\msvc2022_64 `
+  -IncludeCompilerRuntimeInstaller `
+  -IncludeOpenGLSoftwareRenderer `
+  -IncludeSystemD3DCompiler `
+  -IncludeQtTranslations
+```
+
 Example with MSVC from a Developer PowerShell:
 
 ```powershell
