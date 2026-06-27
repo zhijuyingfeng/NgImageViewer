@@ -11,6 +11,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Svg LinguistTools)
 qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
 option(NGIMAGEVIEWER_ENABLE_RAW "Enable RAW image decoding through LibRaw when available" ON)
+option(NGIMAGEVIEWER_ENABLE_HEIF "Enable HEIF/HEIC decoding through bundled libheif when available" ON)
 
 set(NGIMAGEVIEWER_MACOS_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/macos/NgImageViewer.icns")
 
@@ -23,6 +24,8 @@ qt_add_executable(NgImageViewer
     imagewidgets.h
     mainwindow.cpp
     mainwindow.h
+    heifdecoder.cpp
+    heifdecoder.h
     rawdecoder.cpp
     rawdecoder.h
     ${NGIMAGEVIEWER_MACOS_ICON}
@@ -97,6 +100,98 @@ if(NGIMAGEVIEWER_HAS_LIBRAW)
 else()
     target_compile_definitions(NgImageViewer PRIVATE NGIMAGEVIEWER_HAS_LIBRAW=0)
     message(STATUS "RAW support: disabled. Install LibRaw to enable RAW decoding.")
+endif()
+
+set(NGIMAGEVIEWER_HAS_LIBHEIF OFF)
+if(NGIMAGEVIEWER_ENABLE_HEIF)
+    set(NGIMAGEVIEWER_BUNDLED_LIBDE265_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libde265")
+    set(NGIMAGEVIEWER_BUNDLED_LIBHEIF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libheif")
+
+    if(NOT EXISTS "${NGIMAGEVIEWER_BUNDLED_LIBDE265_PATH}/libde265/de265.h"
+            OR NOT EXISTS "${NGIMAGEVIEWER_BUNDLED_LIBHEIF_PATH}/libheif/api/libheif/heif.h")
+        message(FATAL_ERROR
+            "HEIF support requires bundled libde265/libheif submodules. Run:\n"
+            "  git submodule update --init --recursive\n"
+            "System libheif is intentionally not used because distribution versions and codec backends are not reliable enough.")
+    endif()
+
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build bundled HEIF dependencies as static libraries" FORCE)
+
+    set(ENABLE_SDL OFF CACHE BOOL "Do not build bundled libde265 SDL tools" FORCE)
+    set(ENABLE_DECODER ON CACHE BOOL "Build bundled libde265 decoder" FORCE)
+    set(ENABLE_ENCODER OFF CACHE BOOL "Do not build bundled libde265 encoder" FORCE)
+    set(ENABLE_SHERLOCK265 OFF CACHE BOOL "Do not build bundled libde265 visual tool" FORCE)
+    set(ENABLE_INTERNAL_DEVELOPMENT_TOOLS OFF CACHE BOOL "Do not build bundled libde265 development tools" FORCE)
+    set(WITH_FUZZERS OFF CACHE BOOL "Do not build bundled libde265 fuzzers" FORCE)
+    add_subdirectory(
+        "${NGIMAGEVIEWER_BUNDLED_LIBDE265_PATH}"
+        "${CMAKE_CURRENT_BINARY_DIR}/third_party/libde265"
+        EXCLUDE_FROM_ALL)
+    if(TARGET de265)
+        target_include_directories(de265 PRIVATE
+            "${CMAKE_CURRENT_BINARY_DIR}/third_party/libde265")
+    endif()
+
+    set(ENABLE_PLUGIN_LOADING OFF CACHE BOOL "Do not load libheif codec plugins at runtime" FORCE)
+    set(WITH_LIBDE265 ON CACHE BOOL "Build libheif with bundled libde265 HEVC decoder" FORCE)
+    set(WITH_LIBDE265_PLUGIN OFF CACHE BOOL "Build libde265 backend into libheif" FORCE)
+    set(WITH_X265 OFF CACHE BOOL "Do not build HEVC encoder" FORCE)
+    set(WITH_KVAZAAR OFF CACHE BOOL "Do not build kvazaar encoder" FORCE)
+    set(WITH_UVG266 OFF CACHE BOOL "Do not build VVC encoder" FORCE)
+    set(WITH_VVDEC OFF CACHE BOOL "Do not build VVC decoder" FORCE)
+    set(WITH_VVENC OFF CACHE BOOL "Do not build VVC encoder" FORCE)
+    set(WITH_X264 OFF CACHE BOOL "Do not build AVC encoder" FORCE)
+    set(WITH_OpenH264_DECODER OFF CACHE BOOL "Do not build OpenH264 decoder" FORCE)
+    set(WITH_AOM_DECODER OFF CACHE BOOL "Do not build AV1 decoder" FORCE)
+    set(WITH_AOM_ENCODER OFF CACHE BOOL "Do not build AV1 encoder" FORCE)
+    set(WITH_DAV1D OFF CACHE BOOL "Do not build dav1d decoder" FORCE)
+    set(WITH_SvtEnc OFF CACHE BOOL "Do not build SVT encoder" FORCE)
+    set(WITH_RAV1E OFF CACHE BOOL "Do not build rav1e encoder" FORCE)
+    set(WITH_JPEG_DECODER OFF CACHE BOOL "Do not build JPEG decoder" FORCE)
+    set(WITH_JPEG_ENCODER OFF CACHE BOOL "Do not build JPEG encoder" FORCE)
+    set(WITH_OpenJPEG_DECODER OFF CACHE BOOL "Do not build OpenJPEG decoder" FORCE)
+    set(WITH_OpenJPEG_ENCODER OFF CACHE BOOL "Do not build OpenJPEG encoder" FORCE)
+    set(WITH_FFMPEG_DECODER OFF CACHE BOOL "Do not build ffmpeg decoder" FORCE)
+    set(WITH_OPENJPH_DECODER OFF CACHE BOOL "Do not build OpenJPH decoder" FORCE)
+    set(WITH_OPENJPH_ENCODER OFF CACHE BOOL "Do not build OpenJPH encoder" FORCE)
+    set(WITH_UNCOMPRESSED_CODEC OFF CACHE BOOL "Do not build uncompressed HEIF codec" FORCE)
+    set(WITH_WEBCODECS OFF CACHE BOOL "Do not build web codecs backend" FORCE)
+    set(WITH_LIBSHARPYUV OFF CACHE BOOL "Do not build libsharpyuv" FORCE)
+    set(WITH_EXAMPLES OFF CACHE BOOL "Do not build libheif examples" FORCE)
+    set(WITH_EXAMPLE_HEIF_THUMB OFF CACHE BOOL "Do not build libheif thumbnailer" FORCE)
+    set(WITH_EXAMPLE_HEIF_VIEW OFF CACHE BOOL "Do not build libheif viewer" FORCE)
+    set(WITH_GDK_PIXBUF OFF CACHE BOOL "Do not build gdk-pixbuf plugin" FORCE)
+    set(BUILD_DEVELOPMENT_TOOLS OFF CACHE BOOL "Do not build libheif development tools" FORCE)
+    set(BUILD_DOCUMENTATION OFF CACHE BOOL "Do not build libheif documentation" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "Do not build libheif tests" FORCE)
+    set(CMAKE_DISABLE_FIND_PACKAGE_TIFF TRUE CACHE BOOL "Do not let bundled libheif use system TIFF" FORCE)
+    set(CMAKE_DISABLE_FIND_PACKAGE_JPEG TRUE CACHE BOOL "Do not let bundled libheif use system JPEG" FORCE)
+    set(CMAKE_DISABLE_FIND_PACKAGE_PNG TRUE CACHE BOOL "Do not let bundled libheif use system PNG" FORCE)
+    set(CMAKE_DISABLE_FIND_PACKAGE_WEBP TRUE CACHE BOOL "Do not let bundled libheif use system WebP" FORCE)
+
+    set(LIBDE265_INCLUDE_DIR "${NGIMAGEVIEWER_BUNDLED_LIBDE265_PATH}" CACHE PATH "Bundled libde265 include path" FORCE)
+    set(LIBDE265_LIBRARY de265 CACHE STRING "Bundled libde265 target" FORCE)
+    add_subdirectory(
+        "${NGIMAGEVIEWER_BUNDLED_LIBHEIF_PATH}"
+        "${CMAKE_CURRENT_BINARY_DIR}/third_party/libheif"
+        EXCLUDE_FROM_ALL)
+    if(TARGET heif)
+        target_include_directories(heif PRIVATE
+            "${CMAKE_CURRENT_BINARY_DIR}/third_party/libde265")
+        set(NGIMAGEVIEWER_HAS_LIBHEIF ON)
+    endif()
+endif()
+
+if(NGIMAGEVIEWER_HAS_LIBHEIF)
+    target_compile_definitions(NgImageViewer PRIVATE NGIMAGEVIEWER_HAS_LIBHEIF=1)
+    target_include_directories(NgImageViewer PRIVATE
+        "${NGIMAGEVIEWER_BUNDLED_LIBHEIF_PATH}/libheif/api"
+        "${CMAKE_CURRENT_BINARY_DIR}/third_party/libheif")
+    target_link_libraries(NgImageViewer PRIVATE heif)
+    message(STATUS "HEIF support: enabled with bundled libheif + libde265")
+else()
+    target_compile_definitions(NgImageViewer PRIVATE NGIMAGEVIEWER_HAS_LIBHEIF=0)
+    message(STATUS "HEIF support: disabled")
 endif()
 
 install(TARGETS NgImageViewer

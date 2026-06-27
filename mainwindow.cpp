@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include "heifdecoder.h"
 #include "imageformats.h"
 #include "imagewidgets.h"
 #include "rawdecoder.h"
@@ -177,6 +178,9 @@ bool MainWindow::openImage(const QString &filePath, bool showErrors)
 
     if (ImageFormats::isRawFile(filePath)) {
         return openRawImage(filePath, showErrors);
+    }
+    if (ImageFormats::isHeifFile(filePath)) {
+        return openHeifImage(filePath, showErrors);
     }
     if (info.suffix().compare(QStringLiteral("gif"), Qt::CaseInsensitive) == 0) {
         return openGif(filePath, showErrors);
@@ -662,6 +666,7 @@ bool MainWindow::openStaticImage(const QString &filePath, bool showErrors)
     m_isGif = false;
     m_isSvg = false;
     clearRawMetadata();
+    clearHeifMetadata();
     m_originalImage = image;
     m_currentFilePath = filePath;
     m_rotation = 0;
@@ -703,6 +708,7 @@ bool MainWindow::openRawImage(const QString &filePath, bool showErrors)
     invalidateOverviewPreview();
     m_isGif = false;
     m_isSvg = false;
+    clearHeifMetadata();
     m_isRaw = true;
     m_rawDisplaySource = result.displaySource;
     m_rawDecoderInfo = result.decoderInfo;
@@ -725,6 +731,52 @@ bool MainWindow::openRawImage(const QString &filePath, bool showErrors)
     if (!result.warningMessage.isEmpty()) {
         showToast(result.warningMessage);
     }
+    setWindowTitle(QFileInfo(filePath).fileName() + tr(" - NGImageViewer"));
+    return true;
+}
+
+bool MainWindow::openHeifImage(const QString &filePath, bool showErrors)
+{
+    if (!HeifDecoder::isAvailable()) {
+        if (showErrors) {
+            showOpenError(HeifDecoder::unavailableMessage());
+        }
+        return false;
+    }
+
+    const HeifDecoder::DecodeResult result = HeifDecoder::decode(filePath);
+    if (result.image.isNull()) {
+        if (showErrors) {
+            showOpenError(result.errorMessage.isEmpty()
+                              ? tr("HEIF/HEIC 图片打开失败，请检查文件是否损坏")
+                              : result.errorMessage);
+        }
+        return false;
+    }
+
+    stopMovie();
+    stopSvgRenderer();
+    invalidateOverviewPreview();
+    m_isGif = false;
+    m_isSvg = false;
+    clearRawMetadata();
+    m_isHeif = true;
+    m_heifDecoderInfo = result.decoderInfo;
+    m_heifSourceSize = result.sourceSize;
+    m_heifHasAlpha = result.hasAlpha;
+    m_originalImage = result.image;
+    m_currentFilePath = filePath;
+    m_rotation = 0;
+    m_fitToWindow = true;
+    m_scaleFactor = 1.0;
+    m_pendingScrollAnchor = false;
+    rebuildDirectorySequence(filePath);
+    m_stack->setCurrentWidget(m_imagePage);
+    m_scrollArea->setFocus(Qt::OtherFocusReason);
+    updateImageView();
+    QTimer::singleShot(0, this, &MainWindow::updateImageView);
+    updateToolbarState();
+    updateZoomStatus();
     setWindowTitle(QFileInfo(filePath).fileName() + tr(" - NGImageViewer"));
     return true;
 }
@@ -759,6 +811,7 @@ bool MainWindow::openSvgImage(const QString &filePath, bool showErrors)
     m_isSvg = true;
     m_isGif = false;
     clearRawMetadata();
+    clearHeifMetadata();
     m_originalImage = QImage();
     m_currentFilePath = filePath;
     m_rotation = 0;
@@ -794,6 +847,7 @@ bool MainWindow::openGif(const QString &filePath, bool showErrors)
     m_isGif = true;
     m_isSvg = false;
     clearRawMetadata();
+    clearHeifMetadata();
     m_originalImage = QImage();
     m_currentFilePath = filePath;
     m_rotation = 0;
@@ -892,6 +946,7 @@ void MainWindow::clearCurrentImage()
     m_isGif = false;
     m_isSvg = false;
     clearRawMetadata();
+    clearHeifMetadata();
     m_originalImage = QImage();
     m_currentFilePath.clear();
     m_rotation = 0;
@@ -933,6 +988,14 @@ void MainWindow::clearRawMetadata()
     m_rawCameraInfo.clear();
     m_rawSourceSize = QSize();
     m_rawEmbeddedPreviewSize = QSize();
+}
+
+void MainWindow::clearHeifMetadata()
+{
+    m_isHeif = false;
+    m_heifDecoderInfo.clear();
+    m_heifSourceSize = QSize();
+    m_heifHasAlpha = false;
 }
 
 void MainWindow::stopMovie()
@@ -1874,6 +1937,16 @@ void MainWindow::showImageInfoDialog()
                              .arg(m_rawEmbeddedPreviewSize.width())
                              .arg(m_rawEmbeddedPreviewSize.height());
         }
+    } else if (m_isHeif) {
+        if (!m_heifDecoderInfo.isEmpty()) {
+            extraRows << tr("HEIF 解码器：%1").arg(m_heifDecoderInfo.toHtmlEscaped());
+        }
+        if (!m_heifSourceSize.isEmpty()) {
+            extraRows << tr("HEIF 标称尺寸：%1 x %2")
+                             .arg(m_heifSourceSize.width())
+                             .arg(m_heifSourceSize.height());
+        }
+        extraRows << tr("Alpha 通道：%1").arg(m_heifHasAlpha ? tr("有") : tr("无"));
     }
 
     QMessageBox box(this);

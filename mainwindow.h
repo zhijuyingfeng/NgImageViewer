@@ -59,6 +59,7 @@ private:
 
     bool openStaticImage(const QString &filePath, bool showErrors);
     bool openRawImage(const QString &filePath, bool showErrors);
+    bool openHeifImage(const QString &filePath, bool showErrors);
     bool openSvgImage(const QString &filePath, bool showErrors);
     bool openGif(const QString &filePath, bool showErrors);
     void chooseImage();
@@ -69,6 +70,7 @@ private:
     void stopMovie();
     void stopSvgRenderer();
     void clearRawMetadata();
+    void clearHeifMetadata();
 
     void updateToolbarState();
     void updateImageView();
@@ -151,11 +153,15 @@ private:
     bool m_isGif = false;
     bool m_isSvg = false;
     bool m_isRaw = false;
+    bool m_isHeif = false;
     QString m_rawDisplaySource;
     QString m_rawDecoderInfo;
     QString m_rawCameraInfo;
     QSize m_rawSourceSize;
     QSize m_rawEmbeddedPreviewSize;
+    QString m_heifDecoderInfo;
+    QSize m_heifSourceSize;
+    bool m_heifHasAlpha = false;
     bool m_fitToWindow = true;
     bool m_formatWarningShown = false;
     double m_scaleFactor = 1.0;

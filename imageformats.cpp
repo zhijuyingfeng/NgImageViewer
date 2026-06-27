@@ -114,6 +114,12 @@ bool isRawFile(const QString &filePath)
               }).contains(suffix);
 }
 
+bool isHeifFile(const QString &filePath)
+{
+    const QString suffix = QFileInfo(filePath).suffix().toLower();
+    return suffix == QStringLiteral("heic") || suffix == QStringLiteral("heif");
+}
+
 QStringList imageNameFilters()
 {
     QStringList filters = {
