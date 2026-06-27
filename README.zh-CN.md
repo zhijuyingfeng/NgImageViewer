@@ -78,7 +78,7 @@ NGIMAGEVIEWER_THIN_ARCH=arm64 scripts/package-macos.sh
 
 ```bash
 sudo apt update
-sudo apt install build-essential cmake ninja-build pkg-config qt6-base-dev qt6-svg-dev qt6-tools-dev
+sudo apt install build-essential cmake ninja-build pkg-config qt6-base-dev qt6-svg-dev qt6-tools-dev libgl-dev libopengl-dev libegl-dev libglx-dev
 ```
 
 然后配置并构建：
@@ -88,6 +88,26 @@ git submodule update --init --recursive
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
+
+如果希望生成可分发的 AppDir/AppImage，同时不安装到系统路径，需要先准备 `linuxdeploy` 和 `linuxdeploy-plugin-qt`，然后执行：
+
+```bash
+scripts/package-linux.sh
+```
+
+该脚本会构建 Release，将应用暂存到 `dist/linux/NgImageViewer.AppDir`，通过 `linuxdeploy` 和 Qt 插件收集运行依赖，检查暂存后的主程序和 Qt `xcb` 平台插件是否仍有缺失库，并默认输出 `dist/linux/NgImageViewer-x86_64.AppImage`。它不会把文件安装到系统路径。
+
+如果工具不在 `PATH` 中，可以显式指定：
+
+```bash
+LINUXDEPLOY=/path/to/linuxdeploy-x86_64.AppImage \
+LINUXDEPLOY_PLUGIN_QT=/path/to/linuxdeploy-plugin-qt-x86_64.AppImage \
+scripts/package-linux.sh
+```
+
+脚本也会自动在 `tools/` 和 `~/Downloads` 中查找 `linuxdeploy-x86_64.AppImage`、`linuxdeploy-plugin-qt-x86_64.AppImage` 和 AppImage `runtime-x86_64`。如果构建机无法通过 FUSE 运行 AppImage，脚本会使用 extract-and-run 模式；如果 `linuxdeploy` 无法自动下载 AppImage runtime，可以把 `runtime-x86_64` 放到 `tools/` 或 `~/Downloads`，也可以设置 `APPIMAGE_RUNTIME=/path/to/runtime-x86_64`。
+
+设置 `NGIMAGEVIEWER_LINUX_APPIMAGE=0` 可以只生成 AppDir。`LibRaw`、`libheif`、`libde265` 默认通过工程内 submodule 构建并静态链接；Qt 及其插件会被收集到 AppDir/AppImage 中。
 
 安装二进制、`.desktop` 文件和 hicolor 图标：
 
@@ -108,6 +128,27 @@ cmake -S . -B build \
 ## Windows 构建
 
 安装与你要使用的编译器匹配的 Qt 6，例如 MSVC 或 MinGW。Qt、CMake 和编译器工具链需要保持一致。
+
+生成可分发的 Windows zip 包，建议在 Developer PowerShell 中执行：
+
+```powershell
+git submodule update --init --recursive
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1 `
+  -QtPrefix C:\Qt\6.x.x\msvc2022_64
+```
+
+脚本会构建 Release，将文件安装到 `dist\windows\NgImageViewer`，通过同一个 Qt kit 的 `windeployqt` 收集运行依赖，并默认输出 `dist\windows\NgImageViewer-windows-x64.zip`。如果只需要目录、不生成 zip，可以加 `-NoZip`。
+
+Windows 包默认会做体积优化：复制必要的 MSVC runtime DLL，而不是打入完整的 `vc_redist.x64.exe` 安装器；同时跳过 Qt 软件 OpenGL fallback、系统 D3D compiler 和全量 Qt 翻译文件。如果需要更偏兼容性的较大包，可以按需加这些开关：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1 `
+  -QtPrefix C:\Qt\6.x.x\msvc2022_64 `
+  -IncludeCompilerRuntimeInstaller `
+  -IncludeOpenGLSoftwareRenderer `
+  -IncludeSystemD3DCompiler `
+  -IncludeQtTranslations
+```
 
 MSVC 示例，建议在 Developer PowerShell 中执行：
 

@@ -78,7 +78,7 @@ Install Qt 6 development packages and build tools. On Debian/Ubuntu, package nam
 
 ```bash
 sudo apt update
-sudo apt install build-essential cmake ninja-build pkg-config qt6-base-dev qt6-svg-dev qt6-tools-dev
+sudo apt install build-essential cmake ninja-build pkg-config qt6-base-dev qt6-svg-dev qt6-tools-dev libgl-dev libopengl-dev libegl-dev libglx-dev
 ```
 
 Then configure and build:
@@ -88,6 +88,26 @@ git submodule update --init --recursive
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
+
+To package a redistributable AppDir/AppImage without installing to the system, install `linuxdeploy` and `linuxdeploy-plugin-qt`, then run:
+
+```bash
+scripts/package-linux.sh
+```
+
+The script builds Release, stages the app into `dist/linux/NgImageViewer.AppDir`, runs `linuxdeploy` with the Qt plugin, checks the staged binary and Qt `xcb` platform plugin for missing libraries, and writes `dist/linux/NgImageViewer-x86_64.AppImage` by default. It does not install files to your system.
+
+If the tools are not on `PATH`, pass them explicitly:
+
+```bash
+LINUXDEPLOY=/path/to/linuxdeploy-x86_64.AppImage \
+LINUXDEPLOY_PLUGIN_QT=/path/to/linuxdeploy-plugin-qt-x86_64.AppImage \
+scripts/package-linux.sh
+```
+
+The script also looks for `linuxdeploy-x86_64.AppImage`, `linuxdeploy-plugin-qt-x86_64.AppImage`, and AppImage `runtime-x86_64` in `tools/` and `~/Downloads`. If the build machine cannot run AppImages through FUSE, it uses extract-and-run mode. If `linuxdeploy` cannot download the AppImage runtime automatically, place `runtime-x86_64` in `tools/` or `~/Downloads`, or set `APPIMAGE_RUNTIME=/path/to/runtime-x86_64`.
+
+Set `NGIMAGEVIEWER_LINUX_APPIMAGE=0` to generate only the AppDir. `LibRaw`, `libheif`, and `libde265` are built from bundled submodules and linked statically by default; Qt and its plugins are collected into the AppDir/AppImage.
 
 To install the binary, desktop file, and hicolor icon:
 
@@ -108,6 +128,27 @@ cmake -S . -B build \
 ## Build On Windows
 
 Install Qt 6 for the same compiler you plan to use, such as MSVC or MinGW. Keep Qt, CMake, and the compiler toolchain consistent.
+
+To create a redistributable Windows zip package, run from a Developer PowerShell:
+
+```powershell
+git submodule update --init --recursive
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1 `
+  -QtPrefix C:\Qt\6.x.x\msvc2022_64
+```
+
+The script builds Release, installs the app into `dist\windows\NgImageViewer`, runs `windeployqt` from the same Qt kit, and writes `dist\windows\NgImageViewer-windows-x64.zip` by default. Pass `-NoZip` to keep only the package directory.
+
+By default the Windows package is size-optimized: it copies the required MSVC runtime DLLs instead of bundling the full `vc_redist.x64.exe` installer, and it skips Qt's software OpenGL fallback, system D3D compiler, and full Qt translation bundle. For a larger compatibility-first package, pass any of:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1 `
+  -QtPrefix C:\Qt\6.x.x\msvc2022_64 `
+  -IncludeCompilerRuntimeInstaller `
+  -IncludeOpenGLSoftwareRenderer `
+  -IncludeSystemD3DCompiler `
+  -IncludeQtTranslations
+```
 
 Example with MSVC from a Developer PowerShell:
 

@@ -55,8 +55,7 @@ set_target_properties(NgImageViewer PROPERTIES
     MACOSX_BUNDLE_ICON_FILE NgImageViewer.icns
 )
 
-qt_add_translations(
-    TARGETS NgImageViewer
+qt_add_translations(NgImageViewer
     TS_FILES NgImageViewer_zh_CN.ts
 )
 
@@ -147,6 +146,7 @@ if(NGIMAGEVIEWER_ENABLE_HEIF)
     set(ENABLE_SHERLOCK265 OFF CACHE BOOL "Do not build bundled libde265 visual tool" FORCE)
     set(ENABLE_INTERNAL_DEVELOPMENT_TOOLS OFF CACHE BOOL "Do not build bundled libde265 development tools" FORCE)
     set(WITH_FUZZERS OFF CACHE BOOL "Do not build bundled libde265 fuzzers" FORCE)
+    set(FORCE_FULL_VISIBILITY ON CACHE BOOL "Do not reduce bundled libde265 symbol visibility" FORCE)
     add_subdirectory(
         "${NGIMAGEVIEWER_BUNDLED_LIBDE265_PATH}"
         "${CMAKE_CURRENT_BINARY_DIR}/third_party/libde265"
@@ -200,6 +200,7 @@ if(NGIMAGEVIEWER_ENABLE_HEIF)
         "${CMAKE_CURRENT_BINARY_DIR}/third_party/libheif"
         EXCLUDE_FROM_ALL)
     if(TARGET heif)
+        target_compile_definitions(heif PRIVATE LIBDE265_STATIC_BUILD)
         target_include_directories(heif PRIVATE
             "${CMAKE_CURRENT_BINARY_DIR}/third_party/libde265")
         set(NGIMAGEVIEWER_HAS_LIBHEIF ON)
@@ -231,10 +232,3 @@ if(UNIX AND NOT APPLE)
     install(FILES "${NGIMAGEVIEWER_LINUX_DESKTOP_FILE}"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
 endif()
-
-qt_generate_deploy_app_script(
-    TARGET NgImageViewer
-    OUTPUT_SCRIPT deploy_script
-    NO_UNSUPPORTED_PLATFORM_ERROR
-)
-install(SCRIPT ${deploy_script})
