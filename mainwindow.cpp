@@ -36,6 +36,7 @@
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QStyle>
 #include <QSvgRenderer>
 #include <QTimer>
@@ -658,6 +659,7 @@ bool MainWindow::openStaticImage(const QString &filePath, bool showErrors)
     invalidateOverviewPreview();
     m_isGif = false;
     m_isSvg = false;
+    clearRawMetadata();
     m_originalImage = image;
     m_currentFilePath = filePath;
     m_rotation = 0;
@@ -699,6 +701,12 @@ bool MainWindow::openRawImage(const QString &filePath, bool showErrors)
     invalidateOverviewPreview();
     m_isGif = false;
     m_isSvg = false;
+    m_isRaw = true;
+    m_rawDisplaySource = result.displaySource;
+    m_rawDecoderInfo = result.decoderInfo;
+    m_rawCameraInfo = result.cameraInfo;
+    m_rawSourceSize = result.rawSize;
+    m_rawEmbeddedPreviewSize = result.embeddedPreviewSize;
     m_originalImage = result.image;
     m_currentFilePath = filePath;
     m_rotation = 0;
@@ -712,6 +720,9 @@ bool MainWindow::openRawImage(const QString &filePath, bool showErrors)
     QTimer::singleShot(0, this, &MainWindow::updateImageView);
     updateToolbarState();
     updateZoomStatus();
+    if (!result.warningMessage.isEmpty()) {
+        showToast(result.warningMessage);
+    }
     setWindowTitle(QFileInfo(filePath).fileName() + tr(" - NGImageViewer"));
     return true;
 }
@@ -745,6 +756,7 @@ bool MainWindow::openSvgImage(const QString &filePath, bool showErrors)
     m_svgDefaultSize = defaultSize;
     m_isSvg = true;
     m_isGif = false;
+    clearRawMetadata();
     m_originalImage = QImage();
     m_currentFilePath = filePath;
     m_rotation = 0;
@@ -779,6 +791,7 @@ bool MainWindow::openGif(const QString &filePath, bool showErrors)
     m_movie = movie;
     m_isGif = true;
     m_isSvg = false;
+    clearRawMetadata();
     m_originalImage = QImage();
     m_currentFilePath = filePath;
     m_rotation = 0;
@@ -876,6 +889,7 @@ void MainWindow::clearCurrentImage()
     invalidateOverviewPreview();
     m_isGif = false;
     m_isSvg = false;
+    clearRawMetadata();
     m_originalImage = QImage();
     m_currentFilePath.clear();
     m_rotation = 0;
@@ -906,6 +920,16 @@ void MainWindow::clearCurrentImage()
         m_zoomStatusTimer->stop();
     }
     updateToolbarState();
+}
+
+void MainWindow::clearRawMetadata()
+{
+    m_isRaw = false;
+    m_rawDisplaySource.clear();
+    m_rawDecoderInfo.clear();
+    m_rawCameraInfo.clear();
+    m_rawSourceSize = QSize();
+    m_rawEmbeddedPreviewSize = QSize();
 }
 
 void MainWindow::stopMovie()
@@ -1755,20 +1779,47 @@ void MainWindow::showImageInfoDialog()
                                  : tr("%1%").arg(qRound(m_scaleFactor * 100.0));
     const QString fileSize = QLocale().formattedDataSize(info.size());
     const QString modified = QLocale().toString(info.lastModified(), QLocale::ShortFormat);
+    QStringList extraRows;
+    if (m_isRaw) {
+        if (!m_rawDisplaySource.isEmpty()) {
+            extraRows << tr("RAW 显示来源：%1").arg(m_rawDisplaySource.toHtmlEscaped());
+        }
+        if (!m_rawDecoderInfo.isEmpty()) {
+            extraRows << tr("RAW 解码器：%1").arg(m_rawDecoderInfo.toHtmlEscaped());
+        }
+        if (!m_rawCameraInfo.isEmpty()) {
+            extraRows << tr("相机：%1").arg(m_rawCameraInfo.toHtmlEscaped());
+        }
+        if (!m_rawSourceSize.isEmpty()) {
+            extraRows << tr("RAW 标称尺寸：%1 x %2")
+                             .arg(m_rawSourceSize.width())
+                             .arg(m_rawSourceSize.height());
+        }
+        if (!m_rawEmbeddedPreviewSize.isEmpty()) {
+            extraRows << tr("内嵌预览尺寸：%1 x %2")
+                             .arg(m_rawEmbeddedPreviewSize.width())
+                             .arg(m_rawEmbeddedPreviewSize.height());
+        }
+    }
 
     QMessageBox box(this);
     box.setIcon(QMessageBox::Information);
     box.setWindowTitle(tr("更多信息"));
     box.setTextFormat(Qt::RichText);
     box.setText(tr("<b>%1</b>").arg(info.fileName().toHtmlEscaped()));
-    box.setInformativeText(
-        tr("格式：%1<br/>尺寸：%2<br/>文件大小：%3<br/>修改时间：%4<br/>当前缩放：%5<br/>路径：%6")
+    QString informativeText =
+        tr("格式：%1<br/>尺寸：%2<br/>文件大小：%3<br/>修改时间：%4<br/>当前缩放：%5")
             .arg(info.suffix().toUpper().toHtmlEscaped(),
                  sizeText.toHtmlEscaped(),
                  fileSize.toHtmlEscaped(),
                  modified.toHtmlEscaped(),
-                 zoomText.toHtmlEscaped(),
-                 QDir::toNativeSeparators(m_currentFilePath).toHtmlEscaped()));
+                 zoomText.toHtmlEscaped());
+    if (!extraRows.isEmpty()) {
+        informativeText += QStringLiteral("<br/>") + extraRows.join(QStringLiteral("<br/>"));
+    }
+    informativeText += tr("<br/>路径：%1")
+                           .arg(QDir::toNativeSeparators(m_currentFilePath).toHtmlEscaped());
+    box.setInformativeText(informativeText);
     box.exec();
 }
 

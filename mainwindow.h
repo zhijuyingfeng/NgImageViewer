@@ -68,6 +68,7 @@ private:
     void clearCurrentImage();
     void stopMovie();
     void stopSvgRenderer();
+    void clearRawMetadata();
 
     void updateToolbarState();
     void updateImageView();
@@ -148,6 +149,12 @@ private:
     QSize m_svgDefaultSize;
     bool m_isGif = false;
     bool m_isSvg = false;
+    bool m_isRaw = false;
+    QString m_rawDisplaySource;
+    QString m_rawDecoderInfo;
+    QString m_rawCameraInfo;
+    QSize m_rawSourceSize;
+    QSize m_rawEmbeddedPreviewSize;
     bool m_fitToWindow = true;
     bool m_formatWarningShown = false;
     double m_scaleFactor = 1.0;

@@ -4,6 +4,12 @@ NgImageViewer supports RAW images through LibRaw when the dependency is availabl
 The project still builds without LibRaw; in that case RAW extensions appear in the file picker, but opening
 a RAW file shows an explicit "RAW support is not enabled" message.
 
+RAW files are opened with a preview-first strategy. The app first tries to display the embedded JPEG/preview
+stored inside the RAW file. If the embedded preview is missing or too small, it falls back to full LibRaw
+processing. If full processing fails but an embedded preview was available, the app still shows that preview.
+This is intentional for image browsing: embedded previews are usually faster, closer to the camera's own
+rendering, and more compatible with new camera models on older LibRaw builds.
+
 ## Supported Extensions
 
 The RAW file picker and directory navigation include:
