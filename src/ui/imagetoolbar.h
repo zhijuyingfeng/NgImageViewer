@@ -5,6 +5,7 @@
 #include <QWidget>
 
 class QAction;
+class QGraphicsOpacityEffect;
 class QToolButton;
 
 class ImageToolbar : public QWidget
@@ -20,6 +21,7 @@ signals:
     void openRequested();
     void previousRequested();
     void nextRequested();
+    void navigationUnavailableRequested();
     void zoomInRequested();
     void zoomOutRequested();
     void fitRequested();
@@ -52,6 +54,10 @@ private:
     QAction *m_infoAction = nullptr;
     QAction *m_copyPathAction = nullptr;
     QAction *m_revealAction = nullptr;
+    QGraphicsOpacityEffect *m_previousOpacity = nullptr;
+    QGraphicsOpacityEffect *m_nextOpacity = nullptr;
+    bool m_hasPrevious = false;
+    bool m_hasNext = false;
 };
 
 #endif // IMAGETOOLBAR_H

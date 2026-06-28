@@ -18,7 +18,7 @@ FileAssociationDialog::FileAssociationDialog(QWidget *parent)
 {
     const QList<ImageFormatDescriptor> formats = ImageFormats::supportedFormatDescriptors();
 
-    setWindowTitle(tr("关联支持的图片格式"));
+    setWindowTitle(tr("关联图片格式"));
     resize(420, 520);
 
     auto *layout = new QVBoxLayout(this);

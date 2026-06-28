@@ -23,6 +23,10 @@ ngimageviewer_add_qt_test(test_imageloader
     test_imageloader.cpp
 )
 
+ngimageviewer_add_qt_test(test_imageloadstate
+    test_imageloadstate.cpp
+)
+
 ngimageviewer_add_qt_test(test_imagesequence
     test_imagesequence.cpp
 )
