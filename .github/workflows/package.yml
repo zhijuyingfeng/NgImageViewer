@@ -96,7 +96,7 @@ jobs:
             -DNGIMAGEVIEWER_BUILD_TESTS=ON \
             -DBUILD_SHARED_LIBS=OFF
           cmake --build build/linux-tests --parallel
-          ctest --test-dir build/linux-tests --output-on-failure
+          QT_QPA_PLATFORM=offscreen ctest --test-dir build/linux-tests --output-on-failure
 
       - name: Build package
         env:
