@@ -12,7 +12,7 @@ if(WIN32)
     enable_language(RC)
 endif()
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Svg LinguistTools)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Svg Concurrent LinguistTools)
 
 qt_standard_project_setup()
 set(CMAKE_AUTORCC ON)
@@ -173,6 +173,7 @@ target_link_libraries(NgImageViewer
         Qt::Gui
         Qt::Widgets
         Qt::Svg
+        Qt::Concurrent
 )
 
 target_include_directories(NgImageViewer

@@ -7,6 +7,7 @@
 #include <QObject>
 
 #include <limits>
+#include <memory>
 
 #if NGIMAGEVIEWER_HAS_LIBRAW
 #include <libraw/libraw.h>
@@ -167,24 +168,24 @@ RawDecoder::DecodeResult decodeEmbeddedPreview(const QByteArray &rawData)
     RawDecoder::DecodeResult result;
     result.decoderInfo = decoderInfo();
 
-    LibRaw raw;
-    int code = raw.open_buffer(rawData.constData(), static_cast<size_t>(rawData.size()));
+    auto raw = std::make_unique<LibRaw>();
+    int code = raw->open_buffer(rawData.constData(), static_cast<size_t>(rawData.size()));
     if (code != LIBRAW_SUCCESS) {
         result.errorMessage = QObject::tr("RAW 文件打开失败：%1").arg(libRawErrorText(code));
         return result;
     }
 
-    result.cameraInfo = cameraInfo(raw);
-    result.rawSize = rawImageSize(raw);
+    result.cameraInfo = cameraInfo(*raw);
+    result.rawSize = rawImageSize(*raw);
 
-    code = raw.unpack_thumb();
+    code = raw->unpack_thumb();
     if (code != LIBRAW_SUCCESS) {
         result.errorMessage = QObject::tr("RAW 内嵌预览读取失败：%1").arg(libRawErrorText(code));
         return result;
     }
 
     int imageError = LIBRAW_SUCCESS;
-    libraw_processed_image_t *processed = raw.dcraw_make_mem_thumb(&imageError);
+    libraw_processed_image_t *processed = raw->dcraw_make_mem_thumb(&imageError);
     if (!processed || imageError != LIBRAW_SUCCESS) {
         if (processed) {
             LibRaw::dcraw_clear_mem(processed);
@@ -214,35 +215,35 @@ RawDecoder::DecodeResult decodeFullRaw(const QByteArray &rawData)
     result.decoderInfo = decoderInfo();
     result.fullDecodeAttempted = true;
 
-    LibRaw raw;
-    raw.imgdata.params.use_camera_wb = 1;
-    raw.imgdata.params.output_bps = 8;
-    raw.imgdata.params.output_color = 1;
-    raw.imgdata.params.no_auto_bright = 1;
+    auto raw = std::make_unique<LibRaw>();
+    raw->imgdata.params.use_camera_wb = 1;
+    raw->imgdata.params.output_bps = 8;
+    raw->imgdata.params.output_color = 1;
+    raw->imgdata.params.no_auto_bright = 1;
 
-    int code = raw.open_buffer(rawData.constData(), static_cast<size_t>(rawData.size()));
+    int code = raw->open_buffer(rawData.constData(), static_cast<size_t>(rawData.size()));
     if (code != LIBRAW_SUCCESS) {
         result.errorMessage = QObject::tr("RAW 文件打开失败：%1").arg(libRawErrorText(code));
         return result;
     }
 
-    result.cameraInfo = cameraInfo(raw);
-    result.rawSize = rawImageSize(raw);
+    result.cameraInfo = cameraInfo(*raw);
+    result.rawSize = rawImageSize(*raw);
 
-    code = raw.unpack();
+    code = raw->unpack();
     if (code != LIBRAW_SUCCESS) {
         result.errorMessage = QObject::tr("RAW 数据读取失败：%1").arg(libRawErrorText(code));
         return result;
     }
 
-    code = raw.dcraw_process();
+    code = raw->dcraw_process();
     if (code != LIBRAW_SUCCESS) {
         result.errorMessage = QObject::tr("RAW 解码失败：%1").arg(libRawErrorText(code));
         return result;
     }
 
     int imageError = LIBRAW_SUCCESS;
-    libraw_processed_image_t *processed = raw.dcraw_make_mem_image(&imageError);
+    libraw_processed_image_t *processed = raw->dcraw_make_mem_image(&imageError);
     if (!processed || imageError != LIBRAW_SUCCESS) {
         if (processed) {
             LibRaw::dcraw_clear_mem(processed);

@@ -2,10 +2,12 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFuture>
 #include <QImage>
 #include <QStandardPaths>
 #include <QTest>
 #include <QTextStream>
+#include <QtConcurrent/QtConcurrentRun>
 
 class ImageLoaderTest : public QObject
 {
@@ -16,6 +18,7 @@ private slots:
     void rejectsUnsupportedFile();
     void loadsStaticImage();
     void loadsSvgImage();
+    void loadsRawImageFromWorkerWhenConfigured();
 
 private:
     QString tempPath(const QString &fileName) const;
@@ -80,8 +83,24 @@ void ImageLoaderTest::loadsSvgImage()
     ImageLoader::LoadResult result = ImageLoader::load(path);
     QVERIFY(result.success);
     QCOMPARE(result.kind, ImageLoader::Kind::SvgImage);
-    QVERIFY(result.svgRenderer != nullptr);
     QCOMPARE(result.svgDefaultSize, QSize(24, 16));
+}
+
+void ImageLoaderTest::loadsRawImageFromWorkerWhenConfigured()
+{
+    const QString path = QString::fromUtf8(qgetenv("NGIMAGEVIEWER_TEST_RAW_FILE"));
+    if (path.isEmpty()) {
+        QSKIP("Set NGIMAGEVIEWER_TEST_RAW_FILE to run the optional RAW loader worker test.");
+    }
+
+    QFuture<ImageLoader::LoadResult> future = QtConcurrent::run([path] {
+        return ImageLoader::load(path);
+    });
+    future.waitForFinished();
+
+    const ImageLoader::LoadResult result = future.result();
+    QVERIFY2(result.success, qPrintable(result.errorMessage));
+    QVERIFY(!result.image.isNull());
 }
 
 QTEST_MAIN(ImageLoaderTest)

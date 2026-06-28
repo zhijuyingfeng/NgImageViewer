@@ -2,12 +2,8 @@
 #define IMAGELOADER_H
 
 #include <QImage>
-#include <QMovie>
 #include <QSize>
 #include <QString>
-#include <QSvgRenderer>
-
-#include <memory>
 
 class ImageLoader
 {
@@ -41,12 +37,11 @@ public:
     {
         bool success = false;
         Kind kind = Kind::Invalid;
+        QString filePath;
         QString errorMessage;
         QString warningMessage;
         QImage image;
-        std::unique_ptr<QSvgRenderer> svgRenderer;
         QSize svgDefaultSize;
-        std::unique_ptr<QMovie> movie;
         RawMetadata raw;
         HeifMetadata heif;
     };

@@ -17,10 +17,12 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFutureWatcher>
 #include <QImage>
 #include <QKeyEvent>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QMovie>
 #include <QPainter>
 #include <QPainterPath>
 #include <QProcess>
@@ -29,13 +31,51 @@
 #include <QStandardPaths>
 #include <QStringList>
 #include <QStyle>
+#include <QSvgRenderer>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 
 namespace {
+
+class LoadingSpinner : public QWidget
+{
+public:
+    explicit LoadingSpinner(QWidget *parent = nullptr)
+        : QWidget(parent)
+    {
+        setFixedSize(48, 48);
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        connect(&m_timer, &QTimer::timeout, this, [this] {
+            m_angle = (m_angle + 30) % 360;
+            update();
+        });
+        m_timer.start(70);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+
+        const QRectF rect = QRectF(8, 8, width() - 16, height() - 16);
+        painter.setPen(QPen(QColor("#dbe3ec"), 4, Qt::SolidLine, Qt::RoundCap));
+        painter.drawArc(rect, 0, 360 * 16);
+
+        painter.setPen(QPen(QColor("#111827"), 4, Qt::SolidLine, Qt::RoundCap));
+        painter.drawArc(rect, -m_angle * 16, -110 * 16);
+    }
+
+private:
+    QTimer m_timer;
+    int m_angle = 0;
+};
 
 QPixmap createEmptyIllustration(const QSize &size)
 {
@@ -102,8 +142,33 @@ bool MainWindow::openImage(const QString &filePath, bool showErrors)
 {
     showMissingFormatWarning();
 
-    ImageLoader::LoadResult result = ImageLoader::load(filePath);
+    const quint64 requestId = ++m_loadRequestId;
+    showLoadingState(filePath);
+    startAsyncImageLoad(filePath, showErrors, requestId);
+    return true;
+}
+
+void MainWindow::startAsyncImageLoad(const QString &filePath, bool showErrors, quint64 requestId)
+{
+    auto *watcher = new QFutureWatcher<ImageLoader::LoadResult>(this);
+    connect(watcher, &QFutureWatcher<ImageLoader::LoadResult>::finished, this, [this, watcher, showErrors, requestId] {
+        const ImageLoader::LoadResult result = watcher->result();
+        watcher->deleteLater();
+        applyLoadedImage(result, showErrors, requestId);
+    });
+    watcher->setFuture(QtConcurrent::run([filePath] {
+        return ImageLoader::load(filePath);
+    }));
+}
+
+bool MainWindow::applyLoadedImage(const ImageLoader::LoadResult &result, bool showErrors, quint64 requestId)
+{
+    if (requestId != m_loadRequestId) {
+        return false;
+    }
+
     if (!result.success) {
+        showEmptyState();
         if (showErrors) {
             showOpenError(result.errorMessage);
         }
@@ -112,7 +177,7 @@ bool MainWindow::openImage(const QString &filePath, bool showErrors)
 
     clearRawMetadata();
     clearHeifMetadata();
-    m_currentFilePath = filePath;
+    m_currentFilePath = result.filePath;
     switch (result.kind) {
     case ImageLoader::Kind::StaticImage:
         m_viewer->setStaticImage(result.image);
@@ -134,26 +199,50 @@ bool MainWindow::openImage(const QString &filePath, bool showErrors)
         m_viewer->setStaticImage(result.image);
         break;
     case ImageLoader::Kind::SvgImage:
-        m_viewer->setSvgImage(result.svgRenderer.release(), result.svgDefaultSize);
+    {
+        auto *renderer = new QSvgRenderer(result.filePath, this);
+        if (!renderer->isValid()) {
+            renderer->deleteLater();
+            showEmptyState();
+            if (showErrors) {
+                showOpenError(tr("图片打开失败，请检查文件是否损坏"));
+            }
+            return false;
+        }
+        m_viewer->setSvgImage(renderer, result.svgDefaultSize);
         break;
+    }
     case ImageLoader::Kind::GifImage:
-        m_viewer->setGif(result.movie.release());
+    {
+        auto *movie = new QMovie(result.filePath, QByteArray(), this);
+        movie->setCacheMode(QMovie::CacheAll);
+        if (!movie->isValid()) {
+            movie->deleteLater();
+            showEmptyState();
+            if (showErrors) {
+                showOpenError(tr("图片打开失败，请检查文件是否损坏"));
+            }
+            return false;
+        }
+        m_viewer->setGif(movie);
         break;
+    }
     case ImageLoader::Kind::Invalid:
+        showEmptyState();
         if (showErrors) {
             showOpenError(tr("图片打开失败，请检查文件是否损坏"));
         }
         return false;
     }
 
-    m_sequence.rebuild(filePath);
+    m_sequence.rebuild(result.filePath);
     m_stack->setCurrentWidget(m_imagePage);
     m_viewer->focusViewer();
     updateToolbarState();
     if (!result.warningMessage.isEmpty()) {
         showToast(result.warningMessage);
     }
-    setWindowTitle(QFileInfo(filePath).fileName() + tr(" - NGImageViewer"));
+    setWindowTitle(QFileInfo(result.filePath).fileName() + tr(" - NGImageViewer"));
     return true;
 }
 
@@ -241,8 +330,10 @@ void MainWindow::setupUi()
 
     m_stack = new QStackedWidget(central);
     m_emptyPage = createEmptyPage();
+    m_loadingPage = createLoadingPage();
     m_imagePage = createImagePage();
     m_stack->addWidget(m_emptyPage);
+    m_stack->addWidget(m_loadingPage);
     m_stack->addWidget(m_imagePage);
 
     layout->addWidget(m_stack, 1);
@@ -357,6 +448,17 @@ QWidget *MainWindow::createEmptyPage()
     layout->addWidget(title);
     layout->addWidget(subtitle);
     layout->addWidget(openButton, 0, Qt::AlignCenter);
+    return page;
+}
+
+QWidget *MainWindow::createLoadingPage()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+    layout->setAlignment(Qt::AlignCenter);
+
+    auto *spinner = new LoadingSpinner(page);
+    layout->addWidget(spinner, 0, Qt::AlignCenter);
     return page;
 }
 
@@ -482,6 +584,23 @@ void MainWindow::showMissingFormatWarning()
         tr("图片格式支持不完整"),
         tr("当前 Qt 图片插件缺少以下强验收格式：%1。\n请安装对应 Qt 图片插件后再继续。")
             .arg(missing.join(QStringLiteral(", "))));
+}
+
+void MainWindow::showLoadingState(const QString &filePath)
+{
+    if (m_viewer) {
+        m_viewer->clear();
+        m_viewer->hideTransientUi();
+    }
+    clearRawMetadata();
+    clearHeifMetadata();
+    m_currentFilePath.clear();
+    m_sequence.clear();
+    if (m_stack && m_loadingPage) {
+        m_stack->setCurrentWidget(m_loadingPage);
+    }
+    setWindowTitle(QFileInfo(filePath).fileName() + tr(" - NGImageViewer"));
+    updateToolbarState();
 }
 
 void MainWindow::showEmptyState()

@@ -9,6 +9,7 @@ function(ngimageviewer_add_qt_test target)
     target_link_libraries(${target}
         PRIVATE
             ngiv_image
+            Qt::Concurrent
             Qt::Test
     )
     add_test(NAME ${target} COMMAND ${target})

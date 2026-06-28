@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "imageloader.h"
 #include "imagesequence.h"
 
 #include <QLabel>
@@ -39,16 +40,20 @@ protected:
 private:
     void setupUi();
     QWidget *createEmptyPage();
+    QWidget *createLoadingPage();
     QWidget *createImagePage();
     QWidget *createToolbar();
 
     bool hasImage() const;
     bool isSupportedFile(const QString &filePath) const;
     QStringList missingRequiredImageFormats() const;
+    void startAsyncImageLoad(const QString &filePath, bool showErrors, quint64 requestId);
+    bool applyLoadedImage(const ImageLoader::LoadResult &result, bool showErrors, quint64 requestId);
 
     void chooseImage();
     void showOpenError(const QString &message);
     void showMissingFormatWarning();
+    void showLoadingState(const QString &filePath);
     void showEmptyState();
     void clearCurrentImage();
     void clearRawMetadata();
@@ -75,6 +80,7 @@ private:
 
     QStackedWidget *m_stack = nullptr;
     QWidget *m_emptyPage = nullptr;
+    QWidget *m_loadingPage = nullptr;
     QWidget *m_imagePage = nullptr;
     QLabel *m_emptyIllustration = nullptr;
     ImageViewerWidget *m_viewer = nullptr;
@@ -95,6 +101,7 @@ private:
     QSize m_heifSourceSize;
     bool m_heifHasAlpha = false;
     bool m_formatWarningShown = false;
+    quint64 m_loadRequestId = 0;
     ImageSequence m_sequence;
 };
 #endif // MAINWINDOW_H
