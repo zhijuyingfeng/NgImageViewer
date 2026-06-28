@@ -29,33 +29,120 @@ set(NGIMAGEVIEWER_LINUX_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/app-ic
 set(NGIMAGEVIEWER_LINUX_DESKTOP_FILE "${CMAKE_CURRENT_SOURCE_DIR}/resources/linux/ngimageviewer.desktop")
 set(NGIMAGEVIEWER_WINDOWS_RC "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows/NgImageViewer.rc")
 set(NGIMAGEVIEWER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
+set(NGIMAGEVIEWER_APP_DIR "${NGIMAGEVIEWER_SOURCE_DIR}/app")
+set(NGIMAGEVIEWER_IMAGE_DIR "${NGIMAGEVIEWER_SOURCE_DIR}/image")
+set(NGIMAGEVIEWER_PLATFORM_DIR "${NGIMAGEVIEWER_SOURCE_DIR}/platform")
+set(NGIMAGEVIEWER_UI_DIR "${NGIMAGEVIEWER_SOURCE_DIR}/ui")
 
 set(NGIMAGEVIEWER_PLATFORM_SOURCES)
 if(WIN32)
     list(APPEND NGIMAGEVIEWER_PLATFORM_SOURCES "${NGIMAGEVIEWER_WINDOWS_RC}")
 endif()
 
+set(NGIMAGEVIEWER_FILE_ASSOCIATION_PLATFORM_SOURCES)
+if(WIN32)
+    list(APPEND NGIMAGEVIEWER_FILE_ASSOCIATION_PLATFORM_SOURCES
+        ${NGIMAGEVIEWER_PLATFORM_DIR}/fileassociationservice_win.cpp)
+elseif(APPLE)
+    list(APPEND NGIMAGEVIEWER_FILE_ASSOCIATION_PLATFORM_SOURCES
+        ${NGIMAGEVIEWER_PLATFORM_DIR}/fileassociationservice_mac.cpp)
+elseif(UNIX)
+    list(APPEND NGIMAGEVIEWER_FILE_ASSOCIATION_PLATFORM_SOURCES
+        ${NGIMAGEVIEWER_PLATFORM_DIR}/fileassociationservice_linux.cpp)
+else()
+    list(APPEND NGIMAGEVIEWER_FILE_ASSOCIATION_PLATFORM_SOURCES
+        ${NGIMAGEVIEWER_PLATFORM_DIR}/fileassociationservice_unsupported.cpp)
+endif()
+
+qt_add_library(ngiv_image STATIC
+    ${NGIMAGEVIEWER_IMAGE_DIR}/heifdecoder.cpp
+    ${NGIMAGEVIEWER_IMAGE_DIR}/heifdecoder.h
+    ${NGIMAGEVIEWER_IMAGE_DIR}/imageformats.cpp
+    ${NGIMAGEVIEWER_IMAGE_DIR}/imageformats.h
+    ${NGIMAGEVIEWER_IMAGE_DIR}/imageloader.cpp
+    ${NGIMAGEVIEWER_IMAGE_DIR}/imageloader.h
+    ${NGIMAGEVIEWER_IMAGE_DIR}/imagesequence.cpp
+    ${NGIMAGEVIEWER_IMAGE_DIR}/imagesequence.h
+    ${NGIMAGEVIEWER_IMAGE_DIR}/rawdecoder.cpp
+    ${NGIMAGEVIEWER_IMAGE_DIR}/rawdecoder.h
+)
+
+target_link_libraries(ngiv_image
+    PUBLIC
+        Qt::Core
+        Qt::Gui
+        Qt::Svg
+)
+
+target_include_directories(ngiv_image
+    PUBLIC
+        "${NGIMAGEVIEWER_SOURCE_DIR}"
+        "${NGIMAGEVIEWER_IMAGE_DIR}"
+)
+
+qt_add_library(ngiv_platform STATIC
+    ${NGIMAGEVIEWER_PLATFORM_DIR}/fileassociationservice.cpp
+    ${NGIMAGEVIEWER_PLATFORM_DIR}/fileassociationservice.h
+    ${NGIMAGEVIEWER_PLATFORM_DIR}/fileassociationservice_p.h
+    ${NGIMAGEVIEWER_FILE_ASSOCIATION_PLATFORM_SOURCES}
+)
+
+target_link_libraries(ngiv_platform
+    PUBLIC
+        Qt::Core
+    PRIVATE
+        ngiv_image
+)
+
+target_include_directories(ngiv_platform
+    PUBLIC
+        "${NGIMAGEVIEWER_SOURCE_DIR}"
+        "${NGIMAGEVIEWER_PLATFORM_DIR}"
+)
+
+if(WIN32)
+    target_link_libraries(ngiv_platform PRIVATE advapi32 shell32)
+endif()
+
+if(APPLE)
+    target_link_libraries(ngiv_platform PRIVATE "-framework CoreServices")
+endif()
+
+qt_add_library(ngiv_ui STATIC
+    ${NGIMAGEVIEWER_UI_DIR}/fileassociationdialog.cpp
+    ${NGIMAGEVIEWER_UI_DIR}/fileassociationdialog.h
+    ${NGIMAGEVIEWER_UI_DIR}/imageinfodialog.cpp
+    ${NGIMAGEVIEWER_UI_DIR}/imageinfodialog.h
+    ${NGIMAGEVIEWER_UI_DIR}/imagetoolbar.cpp
+    ${NGIMAGEVIEWER_UI_DIR}/imagetoolbar.h
+    ${NGIMAGEVIEWER_UI_DIR}/imageviewerwidget.cpp
+    ${NGIMAGEVIEWER_UI_DIR}/imageviewerwidget.h
+    ${NGIMAGEVIEWER_UI_DIR}/imagewidgets.cpp
+    ${NGIMAGEVIEWER_UI_DIR}/imagewidgets.h
+)
+
+target_link_libraries(ngiv_ui
+    PUBLIC
+        Qt::Core
+        Qt::Gui
+        Qt::Widgets
+        Qt::Svg
+    PRIVATE
+        ngiv_image
+        ngiv_platform
+)
+
+target_include_directories(ngiv_ui
+    PUBLIC
+        "${NGIMAGEVIEWER_SOURCE_DIR}"
+        "${NGIMAGEVIEWER_UI_DIR}"
+)
+
 qt_add_executable(NgImageViewer
     WIN32 MACOSX_BUNDLE
-    ${NGIMAGEVIEWER_SOURCE_DIR}/main.cpp
-    ${NGIMAGEVIEWER_SOURCE_DIR}/fileassociationdialog.cpp
-    ${NGIMAGEVIEWER_SOURCE_DIR}/fileassociationdialog.h
-    ${NGIMAGEVIEWER_SOURCE_DIR}/fileassociationservice.cpp
-    ${NGIMAGEVIEWER_SOURCE_DIR}/fileassociationservice.h
-    ${NGIMAGEVIEWER_SOURCE_DIR}/imageinfodialog.cpp
-    ${NGIMAGEVIEWER_SOURCE_DIR}/imageinfodialog.h
-    ${NGIMAGEVIEWER_SOURCE_DIR}/imagesequence.cpp
-    ${NGIMAGEVIEWER_SOURCE_DIR}/imagesequence.h
-    ${NGIMAGEVIEWER_SOURCE_DIR}/imageformats.cpp
-    ${NGIMAGEVIEWER_SOURCE_DIR}/imageformats.h
-    ${NGIMAGEVIEWER_SOURCE_DIR}/imagewidgets.cpp
-    ${NGIMAGEVIEWER_SOURCE_DIR}/imagewidgets.h
-    ${NGIMAGEVIEWER_SOURCE_DIR}/mainwindow.cpp
-    ${NGIMAGEVIEWER_SOURCE_DIR}/mainwindow.h
-    ${NGIMAGEVIEWER_SOURCE_DIR}/heifdecoder.cpp
-    ${NGIMAGEVIEWER_SOURCE_DIR}/heifdecoder.h
-    ${NGIMAGEVIEWER_SOURCE_DIR}/rawdecoder.cpp
-    ${NGIMAGEVIEWER_SOURCE_DIR}/rawdecoder.h
+    ${NGIMAGEVIEWER_APP_DIR}/main.cpp
+    ${NGIMAGEVIEWER_APP_DIR}/mainwindow.cpp
+    ${NGIMAGEVIEWER_APP_DIR}/mainwindow.h
     ${NGIMAGEVIEWER_MACOS_ICON}
     ${NGIMAGEVIEWER_PLATFORM_SOURCES}
     resources.qrc
@@ -79,6 +166,9 @@ qt_add_translations(NgImageViewer
 
 target_link_libraries(NgImageViewer
     PRIVATE
+        ngiv_image
+        ngiv_platform
+        ngiv_ui
         Qt::Core
         Qt::Gui
         Qt::Widgets
@@ -88,17 +178,16 @@ target_link_libraries(NgImageViewer
 target_include_directories(NgImageViewer
     PRIVATE
         "${NGIMAGEVIEWER_SOURCE_DIR}"
+        "${NGIMAGEVIEWER_APP_DIR}"
 )
 
 if(WIN32)
     target_include_directories(NgImageViewer PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows")
-    target_link_libraries(NgImageViewer PRIVATE advapi32 shell32)
 endif()
 
 if(APPLE)
     set_target_properties(NgImageViewer PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/resources/macos/Info.plist.in")
-    target_link_libraries(NgImageViewer PRIVATE "-framework CoreServices")
 endif()
 
 set(NGIMAGEVIEWER_HAS_LIBRAW OFF)
@@ -142,11 +231,11 @@ if(NGIMAGEVIEWER_ENABLE_RAW)
 endif()
 
 if(NGIMAGEVIEWER_HAS_LIBRAW)
-    target_compile_definitions(NgImageViewer PRIVATE NGIMAGEVIEWER_HAS_LIBRAW=1)
-    target_link_libraries(NgImageViewer PRIVATE ${NGIMAGEVIEWER_LIBRAW_TARGET})
+    target_compile_definitions(ngiv_image PRIVATE NGIMAGEVIEWER_HAS_LIBRAW=1)
+    target_link_libraries(ngiv_image PRIVATE ${NGIMAGEVIEWER_LIBRAW_TARGET})
     message(STATUS "RAW support: enabled with ${NGIMAGEVIEWER_LIBRAW_TARGET}")
 else()
-    target_compile_definitions(NgImageViewer PRIVATE NGIMAGEVIEWER_HAS_LIBRAW=0)
+    target_compile_definitions(ngiv_image PRIVATE NGIMAGEVIEWER_HAS_LIBRAW=0)
     message(STATUS "RAW support: disabled. Install LibRaw to enable RAW decoding.")
 endif()
 
@@ -233,14 +322,14 @@ if(NGIMAGEVIEWER_ENABLE_HEIF)
 endif()
 
 if(NGIMAGEVIEWER_HAS_LIBHEIF)
-    target_compile_definitions(NgImageViewer PRIVATE NGIMAGEVIEWER_HAS_LIBHEIF=1)
-    target_include_directories(NgImageViewer PRIVATE
+    target_compile_definitions(ngiv_image PRIVATE NGIMAGEVIEWER_HAS_LIBHEIF=1)
+    target_include_directories(ngiv_image PRIVATE
         "${NGIMAGEVIEWER_BUNDLED_LIBHEIF_PATH}/libheif/api"
         "${CMAKE_CURRENT_BINARY_DIR}/third_party/libheif")
-    target_link_libraries(NgImageViewer PRIVATE heif)
+    target_link_libraries(ngiv_image PRIVATE heif)
     message(STATUS "HEIF support: enabled with bundled libheif + libde265")
 else()
-    target_compile_definitions(NgImageViewer PRIVATE NGIMAGEVIEWER_HAS_LIBHEIF=0)
+    target_compile_definitions(ngiv_image PRIVATE NGIMAGEVIEWER_HAS_LIBHEIF=0)
     message(STATUS "HEIF support: disabled")
 endif()
 
