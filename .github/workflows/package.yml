@@ -95,7 +95,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DNGIMAGEVIEWER_BUILD_TESTS=ON \
             -DBUILD_SHARED_LIBS=OFF
-          cmake --build build/linux-tests --target test_imageformats test_imagesequence --parallel
+          cmake --build build/linux-tests --parallel
           ctest --test-dir build/linux-tests --output-on-failure
 
       - name: Build package
@@ -149,7 +149,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DNGIMAGEVIEWER_BUILD_TESTS=ON \
             -DBUILD_SHARED_LIBS=OFF
-          cmake --build build/macos-tests --target test_imageformats test_imagesequence --parallel
+          cmake --build build/macos-tests --parallel
           ctest --test-dir build/macos-tests --output-on-failure
 
       - name: Build app
@@ -210,8 +210,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="$env:QT_PREFIX" `
             -DNGIMAGEVIEWER_BUILD_TESTS=ON `
             -DBUILD_SHARED_LIBS=OFF
-          cmake --build build\windows-tests --target test_imageformats --config Release --parallel
-          cmake --build build\windows-tests --target test_imagesequence --config Release --parallel
+          cmake --build build\windows-tests --config Release --parallel
           ctest --test-dir build\windows-tests -C Release --output-on-failure
 
       - name: Build package
