@@ -1,8 +1,8 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "imageloadstate.h"
 #include "imageloader.h"
-#include "imagesequence.h"
 
 #include <QLabel>
 #include <QMainWindow>
@@ -54,10 +54,9 @@ private:
     void showOpenError(const QString &message);
     void showMissingFormatWarning();
     void showLoadingState(const QString &filePath);
+    void showPostLoadFailureState();
     void showEmptyState();
     void clearCurrentImage();
-    void clearRawMetadata();
-    void clearHeifMetadata();
 
     void updateToolbarState();
     bool handleKeyboardShortcut(QKeyEvent *event);
@@ -89,19 +88,7 @@ private:
 
     ImageToolbar *m_toolbar = nullptr;
 
-    QString m_currentFilePath;
-    bool m_isRaw = false;
-    bool m_isHeif = false;
-    QString m_rawDisplaySource;
-    QString m_rawDecoderInfo;
-    QString m_rawCameraInfo;
-    QSize m_rawSourceSize;
-    QSize m_rawEmbeddedPreviewSize;
-    QString m_heifDecoderInfo;
-    QSize m_heifSourceSize;
-    bool m_heifHasAlpha = false;
     bool m_formatWarningShown = false;
-    quint64 m_loadRequestId = 0;
-    ImageSequence m_sequence;
+    ImageLoadState m_imageState;
 };
 #endif // MAINWINDOW_H

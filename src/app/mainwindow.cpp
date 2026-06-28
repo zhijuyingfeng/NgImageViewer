@@ -142,7 +142,7 @@ bool MainWindow::openImage(const QString &filePath, bool showErrors)
 {
     showMissingFormatWarning();
 
-    const quint64 requestId = ++m_loadRequestId;
+    const quint64 requestId = m_imageState.beginLoading(filePath);
     showLoadingState(filePath);
     startAsyncImageLoad(filePath, showErrors, requestId);
     return true;
@@ -163,39 +163,26 @@ void MainWindow::startAsyncImageLoad(const QString &filePath, bool showErrors, q
 
 bool MainWindow::applyLoadedImage(const ImageLoader::LoadResult &result, bool showErrors, quint64 requestId)
 {
-    if (requestId != m_loadRequestId) {
+    if (!m_imageState.isActiveRequest(requestId)) {
         return false;
     }
 
     if (!result.success) {
-        showEmptyState();
+        showPostLoadFailureState();
         if (showErrors) {
             showOpenError(result.errorMessage);
         }
         return false;
     }
 
-    clearRawMetadata();
-    clearHeifMetadata();
-    m_currentFilePath = result.filePath;
     switch (result.kind) {
     case ImageLoader::Kind::StaticImage:
         m_viewer->setStaticImage(result.image);
         break;
     case ImageLoader::Kind::RawImage:
-        m_isRaw = true;
-        m_rawDisplaySource = result.raw.displaySource;
-        m_rawDecoderInfo = result.raw.decoderInfo;
-        m_rawCameraInfo = result.raw.cameraInfo;
-        m_rawSourceSize = result.raw.sourceSize;
-        m_rawEmbeddedPreviewSize = result.raw.embeddedPreviewSize;
         m_viewer->setStaticImage(result.image);
         break;
     case ImageLoader::Kind::HeifImage:
-        m_isHeif = true;
-        m_heifDecoderInfo = result.heif.decoderInfo;
-        m_heifSourceSize = result.heif.sourceSize;
-        m_heifHasAlpha = result.heif.hasAlpha;
         m_viewer->setStaticImage(result.image);
         break;
     case ImageLoader::Kind::SvgImage:
@@ -203,7 +190,7 @@ bool MainWindow::applyLoadedImage(const ImageLoader::LoadResult &result, bool sh
         auto *renderer = new QSvgRenderer(result.filePath, this);
         if (!renderer->isValid()) {
             renderer->deleteLater();
-            showEmptyState();
+            showPostLoadFailureState();
             if (showErrors) {
                 showOpenError(tr("图片打开失败，请检查文件是否损坏"));
             }
@@ -218,7 +205,7 @@ bool MainWindow::applyLoadedImage(const ImageLoader::LoadResult &result, bool sh
         movie->setCacheMode(QMovie::CacheAll);
         if (!movie->isValid()) {
             movie->deleteLater();
-            showEmptyState();
+            showPostLoadFailureState();
             if (showErrors) {
                 showOpenError(tr("图片打开失败，请检查文件是否损坏"));
             }
@@ -228,14 +215,16 @@ bool MainWindow::applyLoadedImage(const ImageLoader::LoadResult &result, bool sh
         break;
     }
     case ImageLoader::Kind::Invalid:
-        showEmptyState();
+        showPostLoadFailureState();
         if (showErrors) {
             showOpenError(tr("图片打开失败，请检查文件是否损坏"));
         }
         return false;
     }
 
-    m_sequence.rebuild(result.filePath);
+    ImageDocument document = ImageLoadState::documentFromLoadResult(result);
+    document.displayedSize = m_viewer ? m_viewer->transformedImageSize() : QSize();
+    m_imageState.completeLoading(document);
     m_stack->setCurrentWidget(m_imagePage);
     m_viewer->focusViewer();
     updateToolbarState();
@@ -292,7 +281,7 @@ void MainWindow::dropEvent(QDropEvent *event)
 
 bool MainWindow::event(QEvent *event)
 {
-    if (m_viewer && m_viewer->handleWindowEvent(event)) {
+    if (hasImage() && m_viewer && m_viewer->handleWindowEvent(event)) {
         return true;
     }
 
@@ -304,7 +293,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
     if (handleKeyboardShortcut(event)) {
         return;
     }
-    if (m_viewer && m_viewer->handleKeyboardPan(event)) {
+    if (hasImage() && m_viewer && m_viewer->handleKeyboardPan(event)) {
         return;
     }
 
@@ -484,6 +473,9 @@ QWidget *MainWindow::createToolbar()
     connect(m_toolbar, &ImageToolbar::openRequested, this, &MainWindow::chooseImage);
     connect(m_toolbar, &ImageToolbar::previousRequested, this, &MainWindow::openPreviousImage);
     connect(m_toolbar, &ImageToolbar::nextRequested, this, &MainWindow::openNextImage);
+    connect(m_toolbar, &ImageToolbar::navigationUnavailableRequested, this, [this] {
+        showToast(tr("没有更多了"));
+    });
     connect(m_toolbar, &ImageToolbar::zoomInRequested, this, [this] {
         if (m_viewer) {
             m_viewer->zoomBy(1.25);
@@ -528,7 +520,10 @@ QWidget *MainWindow::createToolbar()
 
 bool MainWindow::hasImage() const
 {
-    return !m_currentFilePath.isEmpty() && m_viewer && m_viewer->hasImage();
+    return m_imageState.viewerState() == ImageLoadState::ViewerState::ShowingImage
+           && m_imageState.hasCurrent()
+           && m_viewer
+           && m_viewer->hasImage();
 }
 
 bool MainWindow::isSupportedFile(const QString &filePath) const
@@ -544,8 +539,9 @@ QStringList MainWindow::missingRequiredImageFormats() const
 void MainWindow::chooseImage()
 {
     QString startDir;
-    if (!m_currentFilePath.isEmpty()) {
-        startDir = QFileInfo(m_currentFilePath).absolutePath();
+    const QString currentPath = m_imageState.currentPath();
+    if (!currentPath.isEmpty()) {
+        startDir = QFileInfo(currentPath).absolutePath();
     } else {
 #ifdef Q_OS_WIN
         startDir = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
@@ -589,18 +585,30 @@ void MainWindow::showMissingFormatWarning()
 void MainWindow::showLoadingState(const QString &filePath)
 {
     if (m_viewer) {
-        m_viewer->clear();
         m_viewer->hideTransientUi();
     }
-    clearRawMetadata();
-    clearHeifMetadata();
-    m_currentFilePath.clear();
-    m_sequence.clear();
     if (m_stack && m_loadingPage) {
         m_stack->setCurrentWidget(m_loadingPage);
     }
     setWindowTitle(QFileInfo(filePath).fileName() + tr(" - NGImageViewer"));
     updateToolbarState();
+}
+
+void MainWindow::showPostLoadFailureState()
+{
+    m_imageState.failLoading();
+    if (m_imageState.hasCurrent() && m_viewer && m_viewer->hasImage()) {
+        m_stack->setCurrentWidget(m_imagePage);
+        setWindowTitle(QFileInfo(m_imageState.currentPath()).fileName() + tr(" - NGImageViewer"));
+        m_viewer->focusViewer();
+        updateToolbarState();
+        return;
+    }
+
+    if (m_viewer) {
+        m_viewer->clear();
+    }
+    showEmptyState();
 }
 
 void MainWindow::showEmptyState()
@@ -618,29 +626,8 @@ void MainWindow::clearCurrentImage()
     if (m_viewer) {
         m_viewer->clear();
     }
-    clearRawMetadata();
-    clearHeifMetadata();
-    m_currentFilePath.clear();
-    m_sequence.clear();
+    m_imageState.clearCurrent();
     updateToolbarState();
-}
-
-void MainWindow::clearRawMetadata()
-{
-    m_isRaw = false;
-    m_rawDisplaySource.clear();
-    m_rawDecoderInfo.clear();
-    m_rawCameraInfo.clear();
-    m_rawSourceSize = QSize();
-    m_rawEmbeddedPreviewSize = QSize();
-}
-
-void MainWindow::clearHeifMetadata()
-{
-    m_isHeif = false;
-    m_heifDecoderInfo.clear();
-    m_heifSourceSize = QSize();
-    m_heifHasAlpha = false;
 }
 
 void MainWindow::updateToolbarState()
@@ -649,12 +636,14 @@ void MainWindow::updateToolbarState()
         return;
     }
     const bool imageAvailable = hasImage();
+    const bool hasPrevious = imageAvailable && m_imageState.sequence().hasPrevious();
+    const bool hasNext = imageAvailable && m_imageState.sequence().hasNext();
     if (m_viewer) {
-        m_viewer->setNavigationAvailability(m_sequence.hasPrevious(), m_sequence.hasNext());
+        m_viewer->setNavigationAvailability(hasPrevious, hasNext);
     }
     m_toolbar->setState(imageAvailable,
-                        m_sequence.hasPrevious(),
-                        m_sequence.hasNext(),
+                        hasPrevious,
+                        hasNext,
                         m_viewer ? m_viewer->isFitToWindow() : true);
 }
 
@@ -699,7 +688,7 @@ bool MainWindow::handleKeyboardShortcut(QKeyEvent *event)
 
 void MainWindow::openPreviousImage()
 {
-    const QString previousPath = m_sequence.previousPath();
+    const QString previousPath = m_imageState.sequence().previousPath();
     if (!previousPath.isEmpty()) {
         openImage(previousPath, true);
     }
@@ -707,7 +696,7 @@ void MainWindow::openPreviousImage()
 
 void MainWindow::openNextImage()
 {
-    const QString nextPath = m_sequence.nextPath();
+    const QString nextPath = m_imageState.sequence().nextPath();
     if (!nextPath.isEmpty()) {
         openImage(nextPath, true);
     }
@@ -719,7 +708,7 @@ void MainWindow::deleteCurrentImage()
         return;
     }
 
-    const QString path = m_currentFilePath;
+    const QString path = m_imageState.currentPath();
     const bool wasGif = m_viewer && m_viewer->isGif();
     const auto answer = QMessageBox::question(
         this,
@@ -769,13 +758,13 @@ bool MainWindow::confirmPermanentDelete(const QString &path)
 
 void MainWindow::openNeighborAfterDelete()
 {
-    const QString nextPath = m_sequence.nextPathAfterRemovingCurrent(m_currentFilePath);
+    const QString nextPath = m_imageState.sequence().nextPathAfterRemovingCurrent(m_imageState.currentPath());
+    clearCurrentImage();
     if (!nextPath.isEmpty()) {
         openImage(nextPath, true);
         return;
     }
 
-    clearCurrentImage();
     showEmptyState();
 }
 
@@ -794,27 +783,29 @@ void MainWindow::copyCurrentImageToClipboard()
 
 void MainWindow::copyCurrentImagePathToClipboard()
 {
-    if (m_currentFilePath.isEmpty()) {
+    const QString currentPath = m_imageState.currentPath();
+    if (currentPath.isEmpty()) {
         return;
     }
 
-    QApplication::clipboard()->setText(QDir::toNativeSeparators(m_currentFilePath));
+    QApplication::clipboard()->setText(QDir::toNativeSeparators(currentPath));
     showToast(tr("已复制图片路径"));
 }
 
 void MainWindow::revealCurrentImageInFileManager()
 {
-    if (m_currentFilePath.isEmpty()) {
+    const QString currentPath = m_imageState.currentPath();
+    if (currentPath.isEmpty()) {
         return;
     }
 
 #ifdef Q_OS_MAC
-    QProcess::startDetached(QStringLiteral("open"), {QStringLiteral("-R"), m_currentFilePath});
+    QProcess::startDetached(QStringLiteral("open"), {QStringLiteral("-R"), currentPath});
 #elif defined(Q_OS_WIN)
     QProcess::startDetached(QStringLiteral("explorer.exe"),
-                            {QStringLiteral("/select,%1").arg(QDir::toNativeSeparators(m_currentFilePath))});
+                            {QStringLiteral("/select,%1").arg(QDir::toNativeSeparators(currentPath))});
 #else
-    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(m_currentFilePath).absolutePath()));
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(currentPath).absolutePath()));
 #endif
 }
 
@@ -824,22 +815,29 @@ void MainWindow::showImageInfoDialog()
         return;
     }
 
+    const ImageDocument *document = m_imageState.current();
+    if (!document) {
+        return;
+    }
+    const QSize displayedSize = m_viewer ? m_viewer->transformedImageSize() : QSize();
+    m_imageState.setCurrentDisplayedSize(displayedSize);
+
     ImageInfoDialog::Details details;
-    details.filePath = m_currentFilePath;
-    details.imageSize = m_viewer ? m_viewer->transformedImageSize() : QSize();
+    details.filePath = document->filePath;
+    details.imageSize = displayedSize;
     details.zoomText = m_viewer && m_viewer->isFitToWindow()
                            ? tr("Fit")
                            : tr("%1%").arg(qRound((m_viewer ? m_viewer->scaleFactor() : 1.0) * 100.0));
-    details.isRaw = m_isRaw;
-    details.isHeif = m_isHeif;
-    details.rawDisplaySource = m_rawDisplaySource;
-    details.rawDecoderInfo = m_rawDecoderInfo;
-    details.rawCameraInfo = m_rawCameraInfo;
-    details.rawSourceSize = m_rawSourceSize;
-    details.rawEmbeddedPreviewSize = m_rawEmbeddedPreviewSize;
-    details.heifDecoderInfo = m_heifDecoderInfo;
-    details.heifSourceSize = m_heifSourceSize;
-    details.heifHasAlpha = m_heifHasAlpha;
+    details.isRaw = document->isRaw();
+    details.isHeif = document->isHeif();
+    details.rawDisplaySource = document->raw.displaySource;
+    details.rawDecoderInfo = document->raw.decoderInfo;
+    details.rawCameraInfo = document->raw.cameraInfo;
+    details.rawSourceSize = document->raw.sourceSize;
+    details.rawEmbeddedPreviewSize = document->raw.embeddedPreviewSize;
+    details.heifDecoderInfo = document->heif.decoderInfo;
+    details.heifSourceSize = document->heif.sourceSize;
+    details.heifHasAlpha = document->heif.hasAlpha;
     ImageInfoDialog::show(this, details);
 }
 
@@ -897,5 +895,5 @@ void MainWindow::showAboutDialog()
     QMessageBox::about(
         this,
         tr("关于 NGImageViewer"),
-        tr("<b>NGImageViewer</b><br/>跨端图片查看器<br/>支持 JPG、PNG、BMP、GIF、WEBP、SVG、HEIC、HEIF。"));
+        tr("<b>NGImageViewer</b><br/>跨端图片查看器<br/>支持 JPG、PNG、BMP、GIF、WEBP、SVG、HEIC、HEIF 和常见 RAW 格式。"));
 }

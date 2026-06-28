@@ -2,6 +2,7 @@
 
 #include <QAction>
 #include <QFrame>
+#include <QGraphicsOpacityEffect>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QMenu>
@@ -34,6 +35,10 @@ ImageToolbar::ImageToolbar(QWidget *parent)
     m_openButton = createToolButton(QStringLiteral(":/icons/resources/icons/open-file.svg"), tr("打开图片"));
     m_previousButton = createToolButton(QStringLiteral(":/icons/resources/icons/previous.svg"), tr("上一张"));
     m_nextButton = createToolButton(QStringLiteral(":/icons/resources/icons/next.svg"), tr("下一张"));
+    m_previousOpacity = new QGraphicsOpacityEffect(m_previousButton);
+    m_nextOpacity = new QGraphicsOpacityEffect(m_nextButton);
+    m_previousButton->setGraphicsEffect(m_previousOpacity);
+    m_nextButton->setGraphicsEffect(m_nextOpacity);
     m_zoomOutButton = createToolButton(QStringLiteral(":/icons/resources/icons/zoom-out.svg"), tr("缩小"));
     m_zoomInButton = createToolButton(QStringLiteral(":/icons/resources/icons/zoom-in.svg"), tr("放大"));
     m_fitButton = createToolButton(QStringLiteral(":/icons/resources/icons/fit-to-window.svg"), tr("适配窗口"));
@@ -62,8 +67,20 @@ ImageToolbar::ImageToolbar(QWidget *parent)
     layout->addStretch(1);
 
     connect(m_openButton, &QToolButton::clicked, this, &ImageToolbar::openRequested);
-    connect(m_previousButton, &QToolButton::clicked, this, &ImageToolbar::previousRequested);
-    connect(m_nextButton, &QToolButton::clicked, this, &ImageToolbar::nextRequested);
+    connect(m_previousButton, &QToolButton::clicked, this, [this] {
+        if (m_hasPrevious) {
+            emit previousRequested();
+        } else {
+            emit navigationUnavailableRequested();
+        }
+    });
+    connect(m_nextButton, &QToolButton::clicked, this, [this] {
+        if (m_hasNext) {
+            emit nextRequested();
+        } else {
+            emit navigationUnavailableRequested();
+        }
+    });
     connect(m_zoomInButton, &QToolButton::clicked, this, &ImageToolbar::zoomInRequested);
     connect(m_zoomOutButton, &QToolButton::clicked, this, &ImageToolbar::zoomOutRequested);
     connect(m_fitButton, &QToolButton::clicked, this, &ImageToolbar::fitRequested);
@@ -83,7 +100,7 @@ ImageToolbar::ImageToolbar(QWidget *parent)
 #else
     m_revealAction = menu->addAction(tr("在文件管理器中显示"));
 #endif
-    auto *associateFormatsAction = menu->addAction(tr("关联支持的图片格式"));
+    auto *associateFormatsAction = menu->addAction(tr("关联图片格式"));
     menu->addSeparator();
     auto *aboutAction = menu->addAction(tr("关于 NGImageViewer"));
     m_moreButton->setMenu(menu);
@@ -99,6 +116,9 @@ ImageToolbar::ImageToolbar(QWidget *parent)
 
 void ImageToolbar::setState(bool imageAvailable, bool hasPrevious, bool hasNext, bool fitToWindow)
 {
+    m_hasPrevious = imageAvailable && hasPrevious;
+    m_hasNext = imageAvailable && hasNext;
+
     m_openButton->setEnabled(true);
     m_zoomInButton->setEnabled(imageAvailable);
     m_zoomOutButton->setEnabled(imageAvailable);
@@ -107,8 +127,10 @@ void ImageToolbar::setState(bool imageAvailable, bool hasPrevious, bool hasNext,
     m_rotateCwButton->setEnabled(imageAvailable);
     m_rotateCcwButton->setEnabled(imageAvailable);
     m_deleteButton->setEnabled(imageAvailable);
-    m_previousButton->setEnabled(imageAvailable && hasPrevious);
-    m_nextButton->setEnabled(imageAvailable && hasNext);
+    m_previousButton->setEnabled(imageAvailable);
+    m_nextButton->setEnabled(imageAvailable);
+    m_previousOpacity->setOpacity(m_hasPrevious ? 1.0 : 0.35);
+    m_nextOpacity->setOpacity(m_hasNext ? 1.0 : 0.35);
     m_moreButton->setEnabled(true);
     m_copyAction->setEnabled(imageAvailable);
     m_infoAction->setEnabled(imageAvailable);

@@ -59,6 +59,8 @@ qt_add_library(ngiv_image STATIC
     ${NGIMAGEVIEWER_IMAGE_DIR}/heifdecoder.h
     ${NGIMAGEVIEWER_IMAGE_DIR}/imageformats.cpp
     ${NGIMAGEVIEWER_IMAGE_DIR}/imageformats.h
+    ${NGIMAGEVIEWER_IMAGE_DIR}/imageloadstate.cpp
+    ${NGIMAGEVIEWER_IMAGE_DIR}/imageloadstate.h
     ${NGIMAGEVIEWER_IMAGE_DIR}/imageloader.cpp
     ${NGIMAGEVIEWER_IMAGE_DIR}/imageloader.h
     ${NGIMAGEVIEWER_IMAGE_DIR}/imagesequence.cpp
