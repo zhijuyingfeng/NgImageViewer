@@ -13,6 +13,11 @@ const QList<ImageFormatDescriptor> &formatDescriptors()
         {QStringLiteral("jpeg"), QStringLiteral("JPEG"), {QStringLiteral("image/jpeg")}},
         {QStringLiteral("png"), QStringLiteral("PNG"), {QStringLiteral("image/png")}},
         {QStringLiteral("bmp"), QStringLiteral("BMP"), {QStringLiteral("image/bmp"), QStringLiteral("image/x-ms-bmp")}},
+        {QStringLiteral("tif"), QStringLiteral("TIFF"), {QStringLiteral("image/tiff"), QStringLiteral("image/x-tiff")}},
+        {QStringLiteral("tiff"), QStringLiteral("TIFF"), {QStringLiteral("image/tiff"), QStringLiteral("image/x-tiff")}},
+        {QStringLiteral("ico"),
+         QStringLiteral("ICO"),
+         {QStringLiteral("image/vnd.microsoft.icon"), QStringLiteral("image/x-icon")}},
         {QStringLiteral("gif"), QStringLiteral("GIF"), {QStringLiteral("image/gif")}},
         {QStringLiteral("webp"), QStringLiteral("WEBP"), {QStringLiteral("image/webp")}},
         {QStringLiteral("svg"), QStringLiteral("SVG"), {QStringLiteral("image/svg+xml")}},
@@ -27,6 +32,7 @@ const QList<ImageFormatDescriptor> &formatDescriptors()
         {QStringLiteral("dcr"), QStringLiteral("Kodak RAW"), {QStringLiteral("image/x-kodak-dcr")}},
         {QStringLiteral("dng"), QStringLiteral("Adobe DNG"), {QStringLiteral("image/x-adobe-dng")}},
         {QStringLiteral("erf"), QStringLiteral("Epson RAW"), {QStringLiteral("image/x-epson-erf")}},
+        {QStringLiteral("iiq"), QStringLiteral("Phase One RAW"), {QStringLiteral("image/x-phaseone-iiq")}},
         {QStringLiteral("kdc"), QStringLiteral("Kodak RAW"), {QStringLiteral("image/x-kodak-kdc")}},
         {QStringLiteral("mos"), QStringLiteral("Leaf RAW"), {QStringLiteral("image/x-leaf-mos")}},
         {QStringLiteral("mrw"), QStringLiteral("Minolta RAW"), {QStringLiteral("image/x-minolta-mrw")}},
@@ -62,6 +68,8 @@ const QStringList &requiredRuntimeFormats()
 {
     static const QStringList formats = {
         QStringLiteral("gif"),
+        QStringLiteral("ico"),
+        QStringLiteral("tiff"),
         QStringLiteral("webp"),
         QStringLiteral("svg"),
     };
@@ -87,6 +95,9 @@ bool isRawFile(const QString &filePath)
                   QStringLiteral("jpeg"),
                   QStringLiteral("png"),
                   QStringLiteral("bmp"),
+                  QStringLiteral("tif"),
+                  QStringLiteral("tiff"),
+                  QStringLiteral("ico"),
                   QStringLiteral("gif"),
                   QStringLiteral("webp"),
                   QStringLiteral("svg"),

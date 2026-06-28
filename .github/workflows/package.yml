@@ -114,8 +114,16 @@ jobs:
           if-no-files-found: error
 
   macos:
-    name: macOS app
-    runs-on: macos-14
+    name: macOS ${{ matrix.arch }} app
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Checkout
@@ -162,17 +170,18 @@ jobs:
 
       - name: Package app
         run: |
-          scripts/package-macos.sh build/macos-release/NgImageViewer.app
+          NGIMAGEVIEWER_THIN_ARCH="${{ matrix.arch }}" \
+            scripts/package-macos.sh build/macos-release/NgImageViewer.app
           mkdir -p dist/macos
           ditto -c -k --sequesterRsrc --keepParent \
             build/macos-release/NgImageViewer.app \
-            dist/macos/NgImageViewer-macos-arm64.zip
+            "dist/macos/NgImageViewer-macos-${{ matrix.arch }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NgImageViewer-macos-arm64.zip
-          path: dist/macos/NgImageViewer-macos-arm64.zip
+          name: NgImageViewer-macos-${{ matrix.arch }}.zip
+          path: dist/macos/NgImageViewer-macos-${{ matrix.arch }}.zip
           if-no-files-found: error
 
   windows:

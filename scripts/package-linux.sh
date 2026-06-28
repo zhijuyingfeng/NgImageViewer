@@ -288,6 +288,58 @@ deploy_appdir() {
             --plugin qt
 }
 
+prune_qt_translations() {
+    local translations_dir="$APPDIR/usr/translations"
+    local before_count
+    local after_count
+
+    [[ -d "$translations_dir" ]] || return
+
+    before_count="$(find "$translations_dir" -type f -name '*.qm' | wc -l | tr -d ' ')"
+    info "Pruning Qt translations; keeping zh_CN locale"
+
+    find "$translations_dir" -type f -name '*.qm' \
+        ! -name '*_zh_CN.qm' \
+        -delete
+
+    after_count="$(find "$translations_dir" -type f -name '*.qm' | wc -l | tr -d ' ')"
+    printf 'Qt translations: kept %s of %s files.\n' "$after_count" "$before_count"
+}
+
+strip_appdir_binaries() {
+    local strip_bin="${STRIP:-strip}"
+    local stripped_count=0
+    local skipped_count=0
+    local file_path
+
+    if [[ "${NGIMAGEVIEWER_LINUX_STRIP:-1}" != "1" ]]; then
+        info "Explicit AppDir strip skipped by NGIMAGEVIEWER_LINUX_STRIP=0"
+        return
+    fi
+
+    if ! command -v "$strip_bin" >/dev/null 2>&1; then
+        info "strip tool not found; explicit AppDir strip skipped"
+        return
+    fi
+
+    info "Stripping AppDir binaries"
+    while IFS= read -r -d '' file_path; do
+        if "$strip_bin" --strip-unneeded "$file_path" 2>/dev/null; then
+            stripped_count=$((stripped_count + 1))
+        else
+            skipped_count=$((skipped_count + 1))
+        fi
+    done < <(
+        find "$APPDIR" -type f \( \
+            -path "$APPDIR/usr/bin/*" \
+            -o -name '*.so' \
+            -o -name '*.so.*' \
+        \) -print0
+    )
+
+    printf 'AppDir strip: stripped %s files, skipped %s files.\n' "$stripped_count" "$skipped_count"
+}
+
 build_appimage() {
     local linuxdeploy_bin="$1"
     local runtime_file
@@ -361,6 +413,8 @@ configure_release_build
 build_release_binary
 install_to_appdir
 deploy_appdir "$LINUXDEPLOY_BIN" "$QT_PLUGIN_BIN"
+prune_qt_translations
+strip_appdir_binaries
 check_appdir_dependencies
 build_appimage "$LINUXDEPLOY_BIN"
 print_dependency_report

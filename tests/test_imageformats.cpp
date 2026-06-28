@@ -17,8 +17,11 @@ private slots:
 void ImageFormatsTest::supportedFilesAreMatchedCaseInsensitively()
 {
     QVERIFY(ImageFormats::isSupportedFile(QStringLiteral("/tmp/photo.JPG")));
+    QVERIFY(ImageFormats::isSupportedFile(QStringLiteral("/tmp/scan.TIFF")));
+    QVERIFY(ImageFormats::isSupportedFile(QStringLiteral("/tmp/icon.ICO")));
     QVERIFY(ImageFormats::isSupportedFile(QStringLiteral("/tmp/vector.SVG")));
     QVERIFY(ImageFormats::isSupportedFile(QStringLiteral("/tmp/raw.RW2")));
+    QVERIFY(ImageFormats::isSupportedFile(QStringLiteral("/tmp/phaseone.IIQ")));
     QVERIFY(!ImageFormats::isSupportedFile(QStringLiteral("/tmp/readme.txt")));
     QVERIFY(!ImageFormats::isSupportedFile(QStringLiteral("/tmp/no-extension")));
 }
@@ -27,7 +30,10 @@ void ImageFormatsTest::rawAndHeifClassification()
 {
     QVERIFY(ImageFormats::isRawFile(QStringLiteral("/tmp/camera.cr3")));
     QVERIFY(ImageFormats::isRawFile(QStringLiteral("/tmp/camera.RW2")));
+    QVERIFY(ImageFormats::isRawFile(QStringLiteral("/tmp/phaseone.iiq")));
     QVERIFY(!ImageFormats::isRawFile(QStringLiteral("/tmp/photo.jpg")));
+    QVERIFY(!ImageFormats::isRawFile(QStringLiteral("/tmp/scan.tif")));
+    QVERIFY(!ImageFormats::isRawFile(QStringLiteral("/tmp/icon.ico")));
     QVERIFY(!ImageFormats::isRawFile(QStringLiteral("/tmp/photo.heic")));
 
     QVERIFY(ImageFormats::isHeifFile(QStringLiteral("/tmp/photo.heic")));

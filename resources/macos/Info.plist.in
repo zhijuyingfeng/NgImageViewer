@@ -39,6 +39,8 @@
         <string>public.jpeg</string>
         <string>public.png</string>
         <string>com.microsoft.bmp</string>
+        <string>public.tiff</string>
+        <string>com.microsoft.ico</string>
         <string>com.compuserve.gif</string>
         <string>org.webmproject.webp</string>
         <string>public.svg-image</string>
@@ -53,6 +55,9 @@
         <string>jpeg</string>
         <string>png</string>
         <string>bmp</string>
+        <string>tif</string>
+        <string>tiff</string>
+        <string>ico</string>
         <string>gif</string>
         <string>webp</string>
         <string>svg</string>
@@ -67,6 +72,7 @@
         <string>dcr</string>
         <string>dng</string>
         <string>erf</string>
+        <string>iiq</string>
         <string>kdc</string>
         <string>mos</string>
         <string>mrw</string>
