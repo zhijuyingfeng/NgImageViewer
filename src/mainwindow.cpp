@@ -1,6 +1,9 @@
 #include "mainwindow.h"
 
+#include "fileassociationdialog.h"
 #include "heifdecoder.h"
+#include "fileassociationservice.h"
+#include "imageinfodialog.h"
 #include "imageformats.h"
 #include "imagewidgets.h"
 #include "rawdecoder.h"
@@ -8,7 +11,6 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
-#include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
 #include <QDragEnterEvent>
@@ -21,7 +23,6 @@
 #include <QHBoxLayout>
 #include <QImageReader>
 #include <QKeyEvent>
-#include <QLocale>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
@@ -568,6 +569,7 @@ QWidget *MainWindow::createToolbar()
 #else
     m_revealAction = menu->addAction(tr("在文件管理器中显示"));
 #endif
+    m_associateFormatsAction = menu->addAction(tr("关联支持的图片格式"));
     menu->addSeparator();
     auto *aboutAction = menu->addAction(tr("关于 NGImageViewer"));
     m_moreButton->setMenu(menu);
@@ -576,6 +578,7 @@ QWidget *MainWindow::createToolbar()
     connect(m_copyAction, &QAction::triggered, this, &MainWindow::copyCurrentImageToClipboard);
     connect(m_copyPathAction, &QAction::triggered, this, &MainWindow::copyCurrentImagePathToClipboard);
     connect(m_revealAction, &QAction::triggered, this, &MainWindow::revealCurrentImageInFileManager);
+    connect(m_associateFormatsAction, &QAction::triggered, this, &MainWindow::showFileAssociationsDialog);
     connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
 
     updateToolbarState();
@@ -641,7 +644,7 @@ bool MainWindow::openStaticImage(const QString &filePath, bool showErrors)
     m_fitToWindow = true;
     m_scaleFactor = 1.0;
     m_pendingScrollAnchor = false;
-    rebuildDirectorySequence(filePath);
+    m_sequence.rebuild(filePath);
     m_stack->setCurrentWidget(m_imagePage);
     m_scrollArea->setFocus(Qt::OtherFocusReason);
     updateImageView();
@@ -689,7 +692,7 @@ bool MainWindow::openRawImage(const QString &filePath, bool showErrors)
     m_fitToWindow = true;
     m_scaleFactor = 1.0;
     m_pendingScrollAnchor = false;
-    rebuildDirectorySequence(filePath);
+    m_sequence.rebuild(filePath);
     m_stack->setCurrentWidget(m_imagePage);
     m_scrollArea->setFocus(Qt::OtherFocusReason);
     updateImageView();
@@ -738,7 +741,7 @@ bool MainWindow::openHeifImage(const QString &filePath, bool showErrors)
     m_fitToWindow = true;
     m_scaleFactor = 1.0;
     m_pendingScrollAnchor = false;
-    rebuildDirectorySequence(filePath);
+    m_sequence.rebuild(filePath);
     m_stack->setCurrentWidget(m_imagePage);
     m_scrollArea->setFocus(Qt::OtherFocusReason);
     updateImageView();
@@ -786,7 +789,7 @@ bool MainWindow::openSvgImage(const QString &filePath, bool showErrors)
     m_fitToWindow = true;
     m_scaleFactor = 1.0;
     m_pendingScrollAnchor = false;
-    rebuildDirectorySequence(filePath);
+    m_sequence.rebuild(filePath);
     m_stack->setCurrentWidget(m_imagePage);
     m_scrollArea->setFocus(Qt::OtherFocusReason);
     updateImageView();
@@ -828,7 +831,7 @@ bool MainWindow::openGif(const QString &filePath, bool showErrors)
         updateImageView();
     });
     m_movie->start();
-    rebuildDirectorySequence(filePath);
+    m_sequence.rebuild(filePath);
     m_stack->setCurrentWidget(m_imagePage);
     m_scrollArea->setFocus(Qt::OtherFocusReason);
     updateImageView();
@@ -921,8 +924,7 @@ void MainWindow::clearCurrentImage()
     m_fitToWindow = true;
     m_scaleFactor = 1.0;
     m_pendingScrollAnchor = false;
-    m_directoryImages.clear();
-    m_currentIndex = -1;
+    m_sequence.clear();
     m_svgDefaultSize = QSize();
     if (m_imageLabel) {
         m_imageLabel->clearDrawnPixmap();
@@ -998,9 +1000,8 @@ void MainWindow::updateToolbarState()
     m_rotateCwButton->setEnabled(imageAvailable);
     m_rotateCcwButton->setEnabled(imageAvailable);
     m_deleteButton->setEnabled(imageAvailable);
-    m_previousButton->setEnabled(imageAvailable && m_currentIndex > 0);
-    m_nextButton->setEnabled(imageAvailable && m_currentIndex >= 0
-                             && m_currentIndex + 1 < m_directoryImages.size());
+    m_previousButton->setEnabled(imageAvailable && m_sequence.hasPrevious());
+    m_nextButton->setEnabled(imageAvailable && m_sequence.hasNext());
     m_moreButton->setEnabled(true);
     if (m_copyAction) {
         m_copyAction->setEnabled(imageAvailable);
@@ -1506,14 +1507,13 @@ bool MainWindow::handleKeyboardPan(QKeyEvent *event)
     }
 
     if (!isZoomedBeyondFit()) {
-        if (event->key() == Qt::Key_Left && m_currentIndex > 0) {
+        if (event->key() == Qt::Key_Left && m_sequence.hasPrevious()) {
             openPreviousImage();
             event->accept();
             return true;
         }
         if (event->key() == Qt::Key_Right
-            && m_currentIndex >= 0
-            && m_currentIndex + 1 < m_directoryImages.size()) {
+            && m_sequence.hasNext()) {
             openNextImage();
             event->accept();
             return true;
@@ -1755,33 +1755,19 @@ void MainWindow::rotateBy(int degrees)
     updateImageView();
 }
 
-void MainWindow::rebuildDirectorySequence(const QString &filePath)
-{
-    const QFileInfo current(filePath);
-    QDir dir(current.absolutePath());
-    const QFileInfoList files = dir.entryInfoList(
-        ImageFormats::imageNameFilters(),
-        QDir::Files | QDir::Readable,
-        QDir::Name | QDir::IgnoreCase);
-
-    m_directoryImages.clear();
-    for (const QFileInfo &file : files) {
-        m_directoryImages << file.absoluteFilePath();
-    }
-    m_currentIndex = m_directoryImages.indexOf(current.absoluteFilePath());
-}
-
 void MainWindow::openPreviousImage()
 {
-    if (m_currentIndex > 0) {
-        openImage(m_directoryImages.at(m_currentIndex - 1), true);
+    const QString previousPath = m_sequence.previousPath();
+    if (!previousPath.isEmpty()) {
+        openImage(previousPath, true);
     }
 }
 
 void MainWindow::openNextImage()
 {
-    if (m_currentIndex >= 0 && m_currentIndex + 1 < m_directoryImages.size()) {
-        openImage(m_directoryImages.at(m_currentIndex + 1), true);
+    const QString nextPath = m_sequence.nextPath();
+    if (!nextPath.isEmpty()) {
+        openImage(nextPath, true);
     }
 }
 
@@ -1841,14 +1827,9 @@ bool MainWindow::confirmPermanentDelete(const QString &path)
 
 void MainWindow::openNeighborAfterDelete()
 {
-    const int oldIndex = m_currentIndex;
-    const QString oldDir = QFileInfo(m_currentFilePath).absolutePath();
-    rebuildDirectorySequence(QDir(oldDir).absoluteFilePath(QStringLiteral("__deleted__")));
-
-    if (!m_directoryImages.isEmpty()) {
-        const int lastIndex = static_cast<int>(m_directoryImages.size()) - 1;
-        const int nextIndex = std::clamp(oldIndex, 0, lastIndex);
-        openImage(m_directoryImages.at(nextIndex), true);
+    const QString nextPath = m_sequence.nextPathAfterRemovingCurrent(m_currentFilePath);
+    if (!nextPath.isEmpty()) {
+        openImage(nextPath, true);
         return;
     }
 
@@ -1916,68 +1897,44 @@ void MainWindow::showImageInfoDialog()
         return;
     }
 
-    const QFileInfo info(m_currentFilePath);
-    const QSize imageSize = transformedImageSize();
-    const QString sizeText = imageSize.isEmpty()
-                                 ? tr("未知")
-                                 : tr("%1 x %2").arg(imageSize.width()).arg(imageSize.height());
-    const QString zoomText = m_fitToWindow
-                                 ? tr("Fit")
-                                 : tr("%1%").arg(qRound(m_scaleFactor * 100.0));
-    const QString fileSize = QLocale().formattedDataSize(info.size());
-    const QString modified = QLocale().toString(info.lastModified(), QLocale::ShortFormat);
-    QStringList extraRows;
-    if (m_isRaw) {
-        if (!m_rawDisplaySource.isEmpty()) {
-            extraRows << tr("RAW 显示来源：%1").arg(m_rawDisplaySource.toHtmlEscaped());
-        }
-        if (!m_rawDecoderInfo.isEmpty()) {
-            extraRows << tr("RAW 解码器：%1").arg(m_rawDecoderInfo.toHtmlEscaped());
-        }
-        if (!m_rawCameraInfo.isEmpty()) {
-            extraRows << tr("相机：%1").arg(m_rawCameraInfo.toHtmlEscaped());
-        }
-        if (!m_rawSourceSize.isEmpty()) {
-            extraRows << tr("RAW 标称尺寸：%1 x %2")
-                             .arg(m_rawSourceSize.width())
-                             .arg(m_rawSourceSize.height());
-        }
-        if (!m_rawEmbeddedPreviewSize.isEmpty()) {
-            extraRows << tr("内嵌预览尺寸：%1 x %2")
-                             .arg(m_rawEmbeddedPreviewSize.width())
-                             .arg(m_rawEmbeddedPreviewSize.height());
-        }
-    } else if (m_isHeif) {
-        if (!m_heifDecoderInfo.isEmpty()) {
-            extraRows << tr("HEIF 解码器：%1").arg(m_heifDecoderInfo.toHtmlEscaped());
-        }
-        if (!m_heifSourceSize.isEmpty()) {
-            extraRows << tr("HEIF 标称尺寸：%1 x %2")
-                             .arg(m_heifSourceSize.width())
-                             .arg(m_heifSourceSize.height());
-        }
-        extraRows << tr("Alpha 通道：%1").arg(m_heifHasAlpha ? tr("有") : tr("无"));
+    ImageInfoDialog::Details details;
+    details.filePath = m_currentFilePath;
+    details.imageSize = transformedImageSize();
+    details.zoomText = m_fitToWindow
+                           ? tr("Fit")
+                           : tr("%1%").arg(qRound(m_scaleFactor * 100.0));
+    details.isRaw = m_isRaw;
+    details.isHeif = m_isHeif;
+    details.rawDisplaySource = m_rawDisplaySource;
+    details.rawDecoderInfo = m_rawDecoderInfo;
+    details.rawCameraInfo = m_rawCameraInfo;
+    details.rawSourceSize = m_rawSourceSize;
+    details.rawEmbeddedPreviewSize = m_rawEmbeddedPreviewSize;
+    details.heifDecoderInfo = m_heifDecoderInfo;
+    details.heifSourceSize = m_heifSourceSize;
+    details.heifHasAlpha = m_heifHasAlpha;
+    ImageInfoDialog::show(this, details);
+}
+
+void MainWindow::showFileAssociationsDialog()
+{
+    if (!FileAssociationService::isAssociationSupported()) {
+        QMessageBox::information(this, tr("关联图片格式"), tr("当前系统不支持自动关联文件格式"));
+        return;
     }
 
-    QMessageBox box(this);
-    box.setIcon(QMessageBox::Information);
-    box.setWindowTitle(tr("更多信息"));
-    box.setTextFormat(Qt::RichText);
-    box.setText(tr("<b>%1</b>").arg(info.fileName().toHtmlEscaped()));
-    QString informativeText =
-        tr("格式：%1<br/>尺寸：%2<br/>文件大小：%3<br/>修改时间：%4<br/>当前缩放：%5")
-            .arg(info.suffix().toUpper().toHtmlEscaped(),
-                 sizeText.toHtmlEscaped(),
-                 fileSize.toHtmlEscaped(),
-                 modified.toHtmlEscaped(),
-                 zoomText.toHtmlEscaped());
-    if (!extraRows.isEmpty()) {
-        informativeText += QStringLiteral("<br/>") + extraRows.join(QStringLiteral("<br/>"));
+    FileAssociationDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
     }
-    informativeText += tr("<br/>路径：%1")
-                           .arg(QDir::toNativeSeparators(m_currentFilePath).toHtmlEscaped());
-    box.setInformativeText(informativeText);
-    box.exec();
+
+    const FileAssociationService::AssociationResult result =
+        FileAssociationService::applyAssociations(dialog.selectedExtensions());
+    if (result.success) {
+        showToast(result.message);
+    } else {
+        QMessageBox::warning(this, tr("关联失败"), result.message);
+    }
 }
 
 void MainWindow::showToast(const QString &message)

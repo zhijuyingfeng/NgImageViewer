@@ -1,6 +1,8 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "imagesequence.h"
+
 #include <QImage>
 #include <QLabel>
 #include <QMainWindow>
@@ -99,7 +101,6 @@ private:
     void showActualSize();
     void rotateBy(int degrees);
 
-    void rebuildDirectorySequence(const QString &filePath);
     void openPreviousImage();
     void openNextImage();
 
@@ -111,6 +112,7 @@ private:
     void copyCurrentImagePathToClipboard();
     void revealCurrentImageInFileManager();
     void showImageInfoDialog();
+    void showFileAssociationsDialog();
     void showToast(const QString &message);
     void repositionToast();
     void showAboutDialog();
@@ -146,6 +148,7 @@ private:
     QAction *m_infoAction = nullptr;
     QAction *m_copyPathAction = nullptr;
     QAction *m_revealAction = nullptr;
+    QAction *m_associateFormatsAction = nullptr;
 
     QString m_currentFilePath;
     QImage m_originalImage;
@@ -168,8 +171,7 @@ private:
     bool m_formatWarningShown = false;
     double m_scaleFactor = 1.0;
     int m_rotation = 0;
-    QStringList m_directoryImages;
-    int m_currentIndex = -1;
+    ImageSequence m_sequence;
 
     bool m_pendingScrollAnchor = false;
     QPointF m_pendingAnchorImage;

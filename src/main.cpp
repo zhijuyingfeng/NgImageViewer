@@ -2,14 +2,60 @@
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QEvent>
+#include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QLocale>
 #include <QTranslator>
 
+namespace {
+
+class ImageViewerApplication : public QApplication
+{
+public:
+    ImageViewerApplication(int &argc, char **argv)
+        : QApplication(argc, argv)
+    {
+    }
+
+    void setMainWindow(MainWindow *window)
+    {
+        m_window = window;
+        if (m_window && !m_pendingFilePath.isEmpty()) {
+            m_window->openImage(m_pendingFilePath, true);
+            m_pendingFilePath.clear();
+        }
+    }
+
+protected:
+    bool event(QEvent *event) override
+    {
+        if (event->type() == QEvent::FileOpen) {
+            auto *fileOpenEvent = static_cast<QFileOpenEvent *>(event);
+            const QString filePath = fileOpenEvent->file();
+            if (!filePath.isEmpty()) {
+                if (m_window) {
+                    m_window->openImage(filePath, true);
+                } else {
+                    m_pendingFilePath = filePath;
+                }
+                return true;
+            }
+        }
+        return QApplication::event(event);
+    }
+
+private:
+    MainWindow *m_window = nullptr;
+    QString m_pendingFilePath;
+};
+
+} // namespace
+
 int main(int argc, char *argv[])
 {
-    QApplication a(argc, argv);
+    ImageViewerApplication a(argc, argv);
     const QIcon appIcon(QStringLiteral(":/icons/resources/icons/app-icon.svg"));
     QApplication::setWindowIcon(appIcon);
 #ifdef Q_OS_LINUX
@@ -26,6 +72,7 @@ int main(int argc, char *argv[])
         }
     }
     MainWindow w;
+    a.setMainWindow(&w);
     w.setWindowIcon(appIcon);
     w.show();
 

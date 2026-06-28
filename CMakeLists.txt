@@ -32,6 +32,14 @@ endif()
 qt_add_executable(NgImageViewer
     WIN32 MACOSX_BUNDLE
     ${NGIMAGEVIEWER_SOURCE_DIR}/main.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/fileassociationdialog.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/fileassociationdialog.h
+    ${NGIMAGEVIEWER_SOURCE_DIR}/fileassociationservice.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/fileassociationservice.h
+    ${NGIMAGEVIEWER_SOURCE_DIR}/imageinfodialog.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/imageinfodialog.h
+    ${NGIMAGEVIEWER_SOURCE_DIR}/imagesequence.cpp
+    ${NGIMAGEVIEWER_SOURCE_DIR}/imagesequence.h
     ${NGIMAGEVIEWER_SOURCE_DIR}/imageformats.cpp
     ${NGIMAGEVIEWER_SOURCE_DIR}/imageformats.h
     ${NGIMAGEVIEWER_SOURCE_DIR}/imagewidgets.cpp
@@ -53,6 +61,10 @@ set_source_files_properties(${NGIMAGEVIEWER_MACOS_ICON} PROPERTIES
 
 set_target_properties(NgImageViewer PROPERTIES
     MACOSX_BUNDLE_ICON_FILE NgImageViewer.icns
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.ngimageviewer.app
+    MACOSX_BUNDLE_BUNDLE_NAME NgImageViewer
+    MACOSX_BUNDLE_SHORT_VERSION_STRING 0.1.0
+    MACOSX_BUNDLE_BUNDLE_VERSION 0.1.0
 )
 
 qt_add_translations(NgImageViewer
@@ -74,6 +86,13 @@ target_include_directories(NgImageViewer
 
 if(WIN32)
     target_include_directories(NgImageViewer PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows")
+    target_link_libraries(NgImageViewer PRIVATE advapi32 shell32)
+endif()
+
+if(APPLE)
+    set_target_properties(NgImageViewer PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/resources/macos/Info.plist.in")
+    target_link_libraries(NgImageViewer PRIVATE "-framework CoreServices")
 endif()
 
 set(NGIMAGEVIEWER_HAS_LIBRAW OFF)

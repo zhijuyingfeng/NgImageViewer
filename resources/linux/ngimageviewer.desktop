@@ -7,6 +7,6 @@ Exec=NgImageViewer %F
 Icon=ngimageviewer
 Terminal=false
 Categories=Graphics;Viewer;Photography;
-MimeType=image/jpeg;image/png;image/bmp;image/gif;image/webp;image/svg+xml;image/heic;image/heif;image/x-canon-cr2;image/x-canon-cr3;image/x-adobe-dng;
+MimeType=image/jpeg;image/png;image/bmp;image/x-ms-bmp;image/gif;image/webp;image/svg+xml;image/heic;image/heif;image/x-hasselblad-3fr;image/x-sony-arw;image/x-casio-bay;image/x-canon-cr2;image/x-canon-cr3;image/x-canon-crw;image/x-kodak-dcr;image/x-adobe-dng;image/x-epson-erf;image/x-kodak-kdc;image/x-leaf-mos;image/x-minolta-mrw;image/x-nikon-nef;image/x-nikon-nrw;image/x-olympus-orf;image/x-pentax-pef;image/x-fuji-raf;image/x-raw;image/x-panasonic-rw2;image/x-leica-rwl;image/x-sony-sr2;image/x-sony-srf;image/x-samsung-srw;image/x-sigma-x3f;
 StartupNotify=true
 StartupWMClass=NgImageViewer
