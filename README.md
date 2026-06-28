@@ -39,6 +39,21 @@ Both options are enabled by default:
 
 If enabled, missing submodules cause CMake to fail early instead of falling back to system libraries.
 
+## Tests
+
+Automated tests use Qt Test and can run without opening the main window:
+
+```bash
+cmake -S . -B build/tests \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.x.x/macos \
+  -DNGIMAGEVIEWER_BUILD_TESTS=ON
+cmake --build build/tests --target test_imageformats test_imagesequence -j
+ctest --test-dir build/tests --output-on-failure
+```
+
+The current tests cover supported image format metadata and directory navigation sequencing. GitHub Actions runs these tests on Linux, macOS, and Windows before packaging release artifacts.
+
 ## Build On macOS
 
 Install Qt 6 and configure a Release build:

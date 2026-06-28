@@ -39,6 +39,21 @@ git submodule update --init --recursive
 
 如果开启后缺少对应 submodule，CMake 会直接失败，不会回退到系统库。
 
+## 自动化测试
+
+自动化测试基于 Qt Test，不会打开主窗口：
+
+```bash
+cmake -S . -B build/tests \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.x.x/macos \
+  -DNGIMAGEVIEWER_BUILD_TESTS=ON
+cmake --build build/tests --target test_imageformats test_imagesequence -j
+ctest --test-dir build/tests --output-on-failure
+```
+
+当前测试覆盖支持图片格式元数据和目录图片切换序列。GitHub Actions 会在 Linux、macOS、Windows 三端打包前先运行这些测试。
+
 ## macOS 构建
 
 安装 Qt 6 后配置 Release 构建：

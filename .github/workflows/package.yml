@@ -88,6 +88,16 @@ jobs:
             https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
           chmod +x tools/linuxdeploy-x86_64.AppImage tools/linuxdeploy-plugin-qt-x86_64.AppImage
 
+      - name: Run tests
+        run: |
+          cmake -S . -B build/linux-tests -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DNGIMAGEVIEWER_BUILD_TESTS=ON \
+            -DBUILD_SHARED_LIBS=OFF
+          cmake --build build/linux-tests --target test_imageformats test_imagesequence --parallel
+          ctest --test-dir build/linux-tests --output-on-failure
+
       - name: Build package
         env:
           APPIMAGE_RUNTIME: ${{ github.workspace }}/tools/runtime-x86_64
@@ -131,6 +141,16 @@ jobs:
             -m qtimageformats
           echo "QT_PREFIX=$RUNNER_TEMP/Qt/$QT_VERSION/macos" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/Qt/$QT_VERSION/macos/bin" >> "$GITHUB_PATH"
+
+      - name: Run tests
+        run: |
+          cmake -S . -B build/macos-tests -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DNGIMAGEVIEWER_BUILD_TESTS=ON \
+            -DBUILD_SHARED_LIBS=OFF
+          cmake --build build/macos-tests --target test_imageformats test_imagesequence --parallel
+          ctest --test-dir build/macos-tests --output-on-failure
 
       - name: Build app
         run: |
@@ -182,6 +202,17 @@ jobs:
             -m qtimageformats
           "QT_PREFIX=$env:RUNNER_TEMP\Qt\$QtVersion\msvc2019_64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "$env:RUNNER_TEMP\Qt\$QtVersion\msvc2019_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          cmake -S . -B build\windows-tests `
+            -DCMAKE_PREFIX_PATH="$env:QT_PREFIX" `
+            -DNGIMAGEVIEWER_BUILD_TESTS=ON `
+            -DBUILD_SHARED_LIBS=OFF
+          cmake --build build\windows-tests --target test_imageformats --config Release --parallel
+          cmake --build build\windows-tests --target test_imagesequence --config Release --parallel
+          ctest --test-dir build\windows-tests -C Release --output-on-failure
 
       - name: Build package
         shell: pwsh

@@ -78,9 +78,8 @@ find_macdeployqt() {
         return
     fi
 
-    local qt_default="/Users/nigao/Qt/6.11.1/macos/bin/macdeployqt"
-    if [[ -x "$qt_default" ]]; then
-        printf '%s\n' "$qt_default"
+    if [[ -n "${QT_PREFIX:-}" && -x "$QT_PREFIX/bin/macdeployqt" ]]; then
+        printf '%s\n' "$QT_PREFIX/bin/macdeployqt"
         return
     fi
 

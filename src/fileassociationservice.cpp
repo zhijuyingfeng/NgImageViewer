@@ -17,6 +17,7 @@
 
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
+#include <shlobj_core.h>
 #include <shellapi.h>
 #endif
 

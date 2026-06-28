@@ -60,5 +60,6 @@ QString ImageSequence::nextPathAfterRemovingCurrent(const QString &currentFilePa
 
     const int lastIndex = static_cast<int>(m_images.size()) - 1;
     const int nextIndex = std::clamp(oldIndex, 0, lastIndex);
+    m_currentIndex = nextIndex;
     return m_images.at(nextIndex);
 }

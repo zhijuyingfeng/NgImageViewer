@@ -39,7 +39,7 @@ If the submodules are missing, CMake fails immediately instead of falling back t
 Initialize submodules, then delete or reconfigure the CMake build directory:
 
 ```bash
-/Users/nigao/Qt/Tools/CMake/CMake.app/Contents/bin/cmake \
+cmake \
   -S . \
   -B build/Qt_6_11_1_for_macOS_Debug
 ```
